@@ -1,0 +1,1 @@
+export default function Guide(){return <main className="shell grid"><div><div className="brand">OUTING 2026</div><h1>Guide</h1></div>{['🗓️ Schedule','🎒 持ち物','⚠️ 注意事項','📍 施設・集合場所','👥 班分け','📄 しおり全文'].map(x=><section key={x} className="card"><h2>{x}</h2></section>)}</main>}
