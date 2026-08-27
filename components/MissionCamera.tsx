@@ -295,7 +295,7 @@ export default function MissionCamera() {
         <div><div className="brand">OUTING 2026</div><strong>Photo Mission</strong></div>
       </div>
 
-      {(stage === "camera" || (capture && stage === "camera")) && (
+         {stage === "camera" && (
         <>
           <section className="cameraFrame" aria-label="カメラ">
             {!capture ? (
