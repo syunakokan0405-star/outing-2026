@@ -135,21 +135,23 @@ export default async function Admin() {
             gap: 10,
           }}
         >
-          <Link href="/admin/missions">
-            <button className="btn primary">🔥 Mission Drop</button>
-          </Link>
+  <Link href="/admin/missions">
+  <button className="btn primary">🔥 Mission Drop</button>
+</Link>
 
-          <Link href="/admin/stream">
-            <button className="btn outline">📣 Stream投稿</button>
-          </Link>
+<Link href="/admin/stream">
+  <button className="btn outline">📣 Stream投稿</button>
+</Link>
 
-          <button className="btn outline">📷 写真管理</button>
+<Link href="/admin/photos">
+  <button className="btn outline">📷 写真管理</button>
+</Link>
 
-          <button className="btn outline">📅 Guide編集</button>
+<button className="btn outline">📅 Guide編集</button>
 
-          <Link href="/admin/participants">
-            <button className="btn outline">👥 参加者管理</button>
-          </Link>
+<Link href="/admin/participants">
+  <button className="btn outline">👥 参加者管理</button>
+</Link>
         </div>
       </section>
     </main>
