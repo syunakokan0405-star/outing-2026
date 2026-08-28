@@ -49,8 +49,8 @@ export default function AdminPhotos() {
         visibility,
         created_at,
         participant_id,
-        participants(name),
-        missions(title)
+      participants!posts_participant_id_fkey(name),
+missions!posts_mission_id_fkey(title)
       `)
       .eq('event_id', eventId)
       .is('deleted_at', null)
