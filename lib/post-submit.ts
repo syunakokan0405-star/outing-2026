@@ -38,7 +38,7 @@ async function sendQueuedPost(supabase: SupabaseClient, post: QueuedPost): Promi
   if (!uploadError) uploadedNow = true
   else if (!looksLikeDuplicateStorageError(uploadError)) throw uploadError
 
-  const { data, error: rpcError } = await supabase.rpc('submit_mission_post_optional_mentions', {
+const { data, error: rpcError } = await supabase.rpc('submit_mission_post', {
     p_event_id: post.eventId,
     p_mission_id: post.missionId,
     p_image_path: post.imagePath,
