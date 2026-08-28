@@ -200,6 +200,32 @@ export default function AdminGuide() {
         <>
           {sections.map((section) => (
             <section className="card" key={section.id}>
+<label>
+  <b>カテゴリ</b>
+</label>
+
+<select
+  value={section.section_type}
+  onChange={(e) =>
+    updateSection(
+      section.id,
+      'section_type',
+      e.target.value
+    )
+  }
+  style={{
+    width: '100%',
+    padding: 10,
+    margin: '6px 0 12px',
+  }}
+>
+  <option value="schedule">📅 Schedule</option>
+  <option value="packing">🎒 持ち物</option>
+  <option value="rules">⚠️ 注意事項</option>
+  <option value="place">📍 施設・集合場所</option>
+  <option value="groups">👥 班分け</option>
+  <option value="other">📖 しおり全文・その他</option>
+</select>
               <label>
                 <b>タイトル</b>
               </label>
