@@ -73,7 +73,7 @@ export default function AdminGuide() {
       ...current,
       {
         id: tempId,
-        section_type: 'general',
+        section_type: 'other',
         title: '',
         body: '',
         sort_order: current.length + 1,
