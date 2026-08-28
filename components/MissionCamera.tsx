@@ -254,22 +254,63 @@ export default function MissionCamera() {
   }
 
   async function submitPost() {
-    if (!capture) return;
-    if (!eventId || !participantId || !missionId) {
-      setError("投稿に必要な参加者・イベント・Mission情報がありません。名前ClaimとMission DB接続後に投稿できます。");
-      return;
-    }
+  if (!capture) return;
 
+  const params = new URLSearchParams(window.location.search);
+
+  const resolvedMissionId =
+    missionId ?? params.get("missionId");
+
+  let resolvedEventId =
+    eventId ?? params.get("eventId");
+
+  let resolvedParticipantId = participantId;
+
+  if (!resolvedParticipantId) {
+    const { data: authData } = await supabase.auth.getUser();
+    const uid = authData.user?.id;
+
+    if (uid) {
+      const { data } = await supabase
+        .from("participants")
+        .select("id,event_id")
+        .eq("auth_user_id", uid)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        resolvedParticipantId = data.id;
+        resolvedEventId = resolvedEventId ?? data.event_id;
+
+        setParticipantId(data.id);
+        setEventId((current) => current ?? data.event_id);
+      }
+    }
+  }
+
+  if (
+    !resolvedEventId ||
+    !resolvedParticipantId ||
+    !resolvedMissionId
+  ) {
+    setError(
+      "投稿情報の読み込みが完了していません。数秒待ってもう一度お試しください。"
+    );
+    return;
+  }
+
+  setPosting(true);
     setPosting(true);
     setError(null);
     try {
       const clientRequestId = crypto.randomUUID();
-      const filePath = `${eventId}/${participantId}/${clientRequestId}.webp`;
+     const filePath = `${resolvedEventId}/${resolvedParticipantId}/${clientRequestId}.webp`;
       const result = await submitPostReliably(supabase, {
         clientRequestId,
-        eventId,
-        participantId,
-        missionId,
+       eventId: resolvedEventId,
+participantId: resolvedParticipantId,
+missionId: resolvedMissionId,
         imagePath: filePath,
         imageBlob: capture.blob,
         comment: comment.trim() || null,
