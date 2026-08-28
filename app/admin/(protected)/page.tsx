@@ -147,7 +147,9 @@ export default async function Admin() {
   <button className="btn outline">📷 写真管理</button>
 </Link>
 
-<button className="btn outline">📅 Guide編集</button>
+<Link href="/admin/guide">
+  <button className="btn outline">📅 Guide編集</button>
+</Link>
 
 <Link href="/admin/participants">
   <button className="btn outline">👥 参加者管理</button>
