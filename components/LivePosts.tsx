@@ -227,7 +227,7 @@ export default function LivePosts({
     if (!window.confirm('この写真を削除しますか？初回CLEARの得点も取り消されます。')) return
     const { error: deleteError } = await supabase.rpc('delete_post', {
       p_post_id: post.id,
-      p_reason: 'participant_deleted',
+     
     })
     if (deleteError) {
       setError(deleteError.message)
