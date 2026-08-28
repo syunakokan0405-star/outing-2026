@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type MissionForm = {
@@ -8,6 +8,31 @@ type MissionForm = {
   difficulty: 'easy' | 'normal' | 'hard'
   points: number
   required_mentions: number
+}
+
+type AssignmentRow = {
+  id: string
+  first_cleared_at: string | null
+}
+
+type MissionRow = {
+  id: string
+  slot: string
+  title: string
+  difficulty: string
+  points: number
+  required_mentions: number
+  mission_assignments?: AssignmentRow[]
+}
+
+type DropRow = {
+  id: string
+  drop_number: number
+  title: string | null
+  status: string
+  published_at: string | null
+  created_at: string
+  missions?: MissionRow[]
 }
 
 const initialMissions: MissionForm[] = [
@@ -37,7 +62,12 @@ export default function AdminMissions() {
   const [missions, setMissions] =
     useState<MissionForm[]>(initialMissions)
 
-  const [loading, setLoading] = useState(false)
+  const [drops, setDrops] = useState<DropRow[]>([])
+
+  const [creating, setCreating] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [busyDropId, setBusyDropId] = useState<string | null>(null)
+
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -59,6 +89,54 @@ export default function AdminMissions() {
       )
     )
   }
+
+  async function loadDrops() {
+    if (!eventId) {
+      setError('EVENT IDが設定されていません。')
+      setHistoryLoading(false)
+      return
+    }
+
+    setHistoryLoading(true)
+
+    const { data, error: loadError } = await supabase
+      .from('mission_drops')
+      .select(`
+        id,
+        drop_number,
+        title,
+        status,
+        published_at,
+        created_at,
+        missions (
+          id,
+          slot,
+          title,
+          difficulty,
+          points,
+          required_mentions,
+          mission_assignments (
+            id,
+            first_cleared_at
+          )
+        )
+      `)
+      .eq('event_id', eventId)
+      .order('drop_number', { ascending: false })
+
+    if (loadError) {
+      setError(loadError.message)
+      setHistoryLoading(false)
+      return
+    }
+
+    setDrops((data ?? []) as unknown as DropRow[])
+    setHistoryLoading(false)
+  }
+
+  useEffect(() => {
+    void loadDrops()
+  }, [])
 
   async function createDrop() {
     setMessage('')
@@ -91,7 +169,7 @@ export default function AdminMissions() {
 
     if (!confirmed) return
 
-    setLoading(true)
+    setCreating(true)
 
     try {
       const { data, error: rpcError } = await supabase.rpc(
@@ -106,18 +184,60 @@ export default function AdminMissions() {
         throw rpcError
       }
 
-      setMessage(
-        `Mission Dropを配布しました！ Drop ID: ${data}`
-      )
-    } catch (err: any) {
-      console.error(err)
+      setMessage(`Mission Dropを配布しました。Drop ID: ${data}`)
+      await loadDrops()
+    } catch (err) {
       setError(
-        err?.message ??
-          'Mission Dropの配布に失敗しました。'
+        err instanceof Error
+          ? err.message
+          : 'Mission Dropの配布に失敗しました。'
       )
     } finally {
-      setLoading(false)
+      setCreating(false)
     }
+  }
+
+  async function toggleDropStatus(drop: DropRow) {
+    const nextStatus =
+      drop.status === 'published'
+        ? 'draft'
+        : 'published'
+
+    const actionLabel =
+      nextStatus === 'published'
+        ? '再公開'
+        : '停止'
+
+    const confirmed = window.confirm(
+      `Drop #${drop.drop_number} を${actionLabel}しますか？`
+    )
+
+    if (!confirmed) return
+
+    setBusyDropId(drop.id)
+    setError('')
+    setMessage('')
+
+    const { error: rpcError } = await supabase.rpc(
+      'admin_set_mission_drop_status',
+      {
+        p_drop_id: drop.id,
+        p_status: nextStatus,
+      }
+    )
+
+    if (rpcError) {
+      setError(rpcError.message)
+      setBusyDropId(null)
+      return
+    }
+
+    setMessage(
+      `Drop #${drop.drop_number} を${actionLabel}しました。`
+    )
+
+    setBusyDropId(null)
+    await loadDrops()
   }
 
   return (
@@ -131,11 +251,27 @@ export default function AdminMissions() {
     >
       <div>
         <div className="brand">OUTING 2026 ADMIN</div>
-        <h1>Create Mission Drop</h1>
+        <h1>Mission Drop管理</h1>
         <p className="muted">
           3つのMissionを作成し、参加者へSmart Shuffleで均等に配布します。
         </p>
       </div>
+
+      {error && (
+        <section className="card">
+          <b style={{ color: '#d33' }}>
+            エラー：{error}
+          </b>
+        </section>
+      )}
+
+      {message && (
+        <section className="card">
+          <b style={{ color: '#148558' }}>
+            ✓ {message}
+          </b>
+        </section>
+      )}
 
       <div
         style={{
@@ -208,7 +344,7 @@ export default function AdminMissions() {
               }}
             />
 
-            <label>必要メンション人数</label>
+            <label>推奨メンション人数</label>
             <input
               type="number"
               min="0"
@@ -242,39 +378,157 @@ export default function AdminMissions() {
 
           <button
             className="btn primary"
-            onClick={createDrop}
-            disabled={loading}
+            onClick={() => void createDrop()}
+            disabled={creating}
           >
-            {loading
+            {creating
               ? '配布中...'
               : '🔥 Dropを配布'}
           </button>
         </div>
-
-        {message && (
-          <p
-            style={{
-              color: '#148558',
-              fontWeight: 800,
-              marginTop: 16,
-            }}
-          >
-            ✓ {message}
-          </p>
-        )}
-
-        {error && (
-          <p
-            style={{
-              color: '#d33',
-              fontWeight: 800,
-              marginTop: 16,
-            }}
-          >
-            エラー：{error}
-          </p>
-        )}
       </section>
+
+      <section>
+        <h2>過去Drop</h2>
+      </section>
+
+      {historyLoading ? (
+        <section className="card">
+          <b>読み込み中...</b>
+        </section>
+      ) : drops.length === 0 ? (
+        <section className="card">
+          <p className="muted">
+            まだMission Dropはありません。
+          </p>
+        </section>
+      ) : (
+        <div className="grid">
+          {drops.map((drop) => {
+            const dropAssignments =
+              drop.missions?.reduce(
+                (total, mission) =>
+                  total +
+                  (mission.mission_assignments?.length ?? 0),
+                0
+              ) ?? 0
+
+            const dropCleared =
+              drop.missions?.reduce(
+                (total, mission) =>
+                  total +
+                  (
+                    mission.mission_assignments?.filter(
+                      (assignment) =>
+                        Boolean(assignment.first_cleared_at)
+                    ).length ?? 0
+                  ),
+                0
+              ) ?? 0
+
+            const clearRate =
+              dropAssignments > 0
+                ? Math.round(
+                    (dropCleared / dropAssignments) * 100
+                  )
+                : 0
+
+            return (
+              <section className="card" key={drop.id}>
+                <div className="row">
+                  <div>
+                    <h2>
+                      Drop #{drop.drop_number}
+                    </h2>
+
+                    <p className="muted">
+                      状態：
+                      {drop.status === 'published'
+                        ? '公開中'
+                        : '停止中'}
+                      {' / '}
+                      CLEAR {dropCleared}/{dropAssignments}
+                      {' '}
+                      ({clearRate}%)
+                    </p>
+                  </div>
+
+                  <button
+                    className={
+                      drop.status === 'published'
+                        ? 'btn outline'
+                        : 'btn primary'
+                    }
+                    onClick={() =>
+                      void toggleDropStatus(drop)
+                    }
+                    disabled={busyDropId === drop.id}
+                  >
+                    {busyDropId === drop.id
+                      ? '処理中...'
+                      : drop.status === 'published'
+                        ? '停止'
+                        : '再公開'}
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns:
+                      'repeat(auto-fit,minmax(220px,1fr))',
+                    gap: 10,
+                    marginTop: 12,
+                  }}
+                >
+                  {(drop.missions ?? [])
+                    .slice()
+                    .sort((a, b) =>
+                      a.slot.localeCompare(b.slot)
+                    )
+                    .map((mission) => {
+                      const assigned =
+                        mission.mission_assignments?.length ?? 0
+
+                      const cleared =
+                        mission.mission_assignments?.filter(
+                          (assignment) =>
+                            Boolean(
+                              assignment.first_cleared_at
+                            )
+                        ).length ?? 0
+
+                      return (
+                        <div
+                          className="card"
+                          key={mission.id}
+                        >
+                          <b>
+                            Mission {mission.slot}
+                          </b>
+
+                          <h3>{mission.title}</h3>
+
+                          <p className="muted">
+                            {mission.difficulty}
+                            {' / '}
+                            {mission.points}pt
+                          </p>
+
+                          <p className="muted">
+                            配布 {assigned}人
+                            {' / '}
+                            CLEAR {cleared}人
+                          </p>
+                        </div>
+                      )
+                    })}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      )}
     </main>
   )
 }
