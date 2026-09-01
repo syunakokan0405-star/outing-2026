@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function Missions() {
   const supabase = await createClient();
-
   const eventId = process.env.NEXT_PUBLIC_EVENT_ID;
 
   if (!eventId) {
@@ -18,7 +17,7 @@ export default async function Missions() {
     );
   }
 
-  // 今ログインしている参加者を取得
+  // 現在ログインしている参加者を取得
   const { data: me, error: meError } = await supabase.rpc(
     "get_my_participant",
     {
@@ -43,27 +42,28 @@ export default async function Missions() {
     redirect("/join");
   }
 
-  // 自分に配られたMission一覧
-  const { data: assignments, error: assignmentError } = await supabase
-    .from("mission_assignments")
-    .select(`
-      id,
-      first_cleared_at,
-      mission:missions (
+  // 自分に割り当てられたMission一覧
+  const { data: assignments, error: assignmentError } =
+    await supabase
+      .from("mission_assignments")
+      .select(`
         id,
-        title,
-        difficulty,
-        points,
-        required_mentions,
-        drop:mission_drops (
-          event_id,
-          status,
-          drop_number
+        first_cleared_at,
+        mission:missions (
+          id,
+          title,
+          difficulty,
+          points,
+          required_mentions,
+          drop:mission_drops (
+            event_id,
+            status,
+            drop_number
+          )
         )
-      )
-    `)
-    .eq("participant_id", participant.participant_id)
-    .order("created_at", { ascending: false });
+      `)
+      .eq("participant_id", participant.participant_id)
+      .order("created_at", { ascending: false });
 
   if (assignmentError) {
     return (
@@ -111,7 +111,7 @@ export default async function Missions() {
         <section className="card">
           <h2>現在Missionはありません</h2>
           <p className="muted">
-            新しいDropが配布されるとここに表示されます。
+            新しいDropが公開されるとここに表示されます。
           </p>
         </section>
       )}
@@ -131,26 +131,32 @@ export default async function Missions() {
             key={mission.assignmentId}
             className="card"
             style={{
-              opacity: mission.cleared ? 0.45 : 1,
+              opacity: mission.cleared ? 0.55 : 1,
             }}
           >
+            <div className="muted">
+              Drop #{mission.dropNumber}
+            </div>
+
             <span>
               {mission.difficulty.charAt(0).toUpperCase() +
                 mission.difficulty.slice(1)}
-              {" · "}
+              {" ・ "}
               +{mission.points}pt
             </span>
 
             <h2>{mission.title}</h2>
 
             <p className="muted">
-              メンション {mission.requiredMentions}人以上
+              必要メンション人数：{mission.requiredMentions}人以上
             </p>
 
             {mission.cleared && (
               <>
                 <b>CLEAR ✓</b>
-                <p>再撮影OK・追加得点なし</p>
+                <p className="muted">
+                  再撮影OK・追加ポイントはありません。
+                </p>
               </>
             )}
 
