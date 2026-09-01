@@ -11,7 +11,13 @@ export default async function Admin() {
 
   if (!eventId) {
     return (
-      <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
+      <main
+        style={{
+          maxWidth: 1100,
+          margin: '0 auto',
+          padding: 24,
+        }}
+      >
         <section className="card">
           <h2>設定エラー</h2>
           <p>NEXT_PUBLIC_EVENT_ID が設定されていません。</p>
@@ -48,22 +54,28 @@ export default async function Admin() {
 
     supabase
       .from('mission_assignments')
-      .select(`
-        id,
-        mission:missions!inner(
-          drop:mission_drops!inner(event_id)
-        )
-      `, { count: 'exact', head: true })
+      .select(
+        `
+          id,
+          mission:missions!inner(
+            drop:mission_drops!inner(event_id)
+          )
+        `,
+        { count: 'exact', head: true },
+      )
       .eq('mission.drop.event_id', eventId),
 
     supabase
       .from('mission_assignments')
-      .select(`
-        id,
-        mission:missions!inner(
-          drop:mission_drops!inner(event_id)
-        )
-      `, { count: 'exact', head: true })
+      .select(
+        `
+          id,
+          mission:missions!inner(
+            drop:mission_drops!inner(event_id)
+          )
+        `,
+        { count: 'exact', head: true },
+      )
       .eq('mission.drop.event_id', eventId)
       .not('first_cleared_at', 'is', null),
 
@@ -84,7 +96,8 @@ export default async function Admin() {
       ? Math.round((cleared / assignments) * 100)
       : 0
 
-  const eventStatus = eventResult.data?.status ?? 'unknown'
+  const eventStatus =
+    eventResult.data?.status ?? 'unknown'
 
   const stats = [
     [String(participants), '参加者'],
@@ -95,7 +108,11 @@ export default async function Admin() {
 
   return (
     <main
-      style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}
+      style={{
+        maxWidth: 1100,
+        margin: '0 auto',
+        padding: 24,
+      }}
       className="grid"
     >
       <div className="row">
@@ -105,7 +122,9 @@ export default async function Admin() {
         </div>
 
         <div className="row">
-          <span>EVENT: {eventStatus.toUpperCase()}</span>
+          <span>
+            EVENT: {eventStatus.toUpperCase()}
+          </span>
           <AdminLogout />
         </div>
       </div>
@@ -113,14 +132,23 @@ export default async function Admin() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+          gridTemplateColumns:
+            'repeat(auto-fit,minmax(180px,1fr))',
           gap: 12,
         }}
       >
-        {stats.map(([n, l]) => (
-          <div className="card" key={l}>
-            <div className="muted">{l}</div>
-            <div className="stat">{n}</div>
+        {stats.map(([number, label]) => (
+          <div
+            className="card"
+            key={label}
+          >
+            <div className="muted">
+              {label}
+            </div>
+
+            <div className="stat">
+              {number}
+            </div>
           </div>
         ))}
       </div>
@@ -131,37 +159,58 @@ export default async function Admin() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+            gridTemplateColumns:
+              'repeat(auto-fit,minmax(180px,1fr))',
             gap: 10,
           }}
         >
-  <Link href="/admin/missions">
-  <button className="btn primary">🔥 Mission Drop</button>
-</Link>
+          <Link href="/admin/missions">
+            <button className="btn primary">
+              🎯 Mission Drop
+            </button>
+          </Link>
 
-<Link href="/admin/stream">
-  <button className="btn outline">📣 Stream投稿</button>
-</Link>
+          <Link href="/admin/announcements">
+            <button className="btn outline">
+              📢 お知らせ管理
+            </button>
+          </Link>
 
-<Link href="/admin/photos">
-  <button className="btn outline">📷 写真管理</button>
-</Link>
+          <Link href="/admin/stream">
+            <button className="btn outline">
+              📡 Stream投稿
+            </button>
+          </Link>
 
-<Link href="/admin/guide">
-  <button className="btn outline">📅 Guide編集</button>
-</Link>
+          <Link href="/admin/photos">
+            <button className="btn outline">
+              📷 写真管理
+            </button>
+          </Link>
 
-<Link href="/admin/awards">
-  <button className="btn outline">🏆 Award管理</button>
-</Link>
+          <Link href="/admin/guide">
+            <button className="btn outline">
+              📖 Guide編集
+            </button>
+          </Link>
 
-<Link href="/admin/admins">
-  <button className="btn outline">🛡️ 管理者管理</button>
-</Link>
+          <Link href="/admin/awards">
+            <button className="btn outline">
+              🏆 Award管理
+            </button>
+          </Link>
 
-<Link href="/admin/participants">
-  <button className="btn outline">👥 参加者管理</button>
-</Link>
+          <Link href="/admin/admins">
+            <button className="btn outline">
+              👤 運営管理
+            </button>
+          </Link>
+
+          <Link href="/admin/participants">
+            <button className="btn outline">
+              👥 参加者管理
+            </button>
+          </Link>
         </div>
       </section>
     </main>

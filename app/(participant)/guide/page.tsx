@@ -20,7 +20,7 @@ export default async function Guide() {
       <main className="shell grid">
         <section className="card">
           <h2>設定エラー</h2>
-          <p>EVENT IDが設定されていません。</p>
+          <p>EVENT ID が設定されていません。</p>
         </section>
       </main>
     )
