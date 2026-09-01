@@ -31,9 +31,7 @@ type StreamPost = {
 export default function AdminStream() {
   const supabase = useMemo(() => createClient(), [])
 
-  const [admin, setAdmin] =
-    useState<AdminContext | null>(null)
-
+  const [admin, setAdmin] = useState<AdminContext | null>(null)
   const [posts, setPosts] = useState<StreamPost[]>([])
   const [signedUrls, setSignedUrls] =
     useState<Record<string, string>>({})
@@ -45,8 +43,7 @@ export default function AdminStream() {
 
   const [sending, setSending] = useState(false)
   const [loadingPosts, setLoadingPosts] = useState(true)
-  const [deletingId, setDeletingId] =
-    useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -77,9 +74,7 @@ export default function AdminStream() {
       return
     }
 
-    const rows =
-      (data ?? []) as unknown as StreamPost[]
-
+    const rows = (data ?? []) as unknown as StreamPost[]
     setPosts(rows)
 
     const paths = rows
@@ -128,12 +123,11 @@ export default function AdminStream() {
         return
       }
 
-      const { data, error: adminError } =
-        await supabase
-          .from('admin_users')
-          .select('id,event_id,display_name')
-          .eq('auth_user_id', user.id)
-          .maybeSingle()
+      const { data, error: adminError } = await supabase
+        .from('admin_users')
+        .select('id,event_id,display_name')
+        .eq('auth_user_id', user.id)
+        .maybeSingle()
 
       if (adminError || !data) {
         setError(
@@ -156,9 +150,7 @@ export default function AdminStream() {
     }
   }, [preview])
 
-  function chooseFile(
-    e: ChangeEvent<HTMLInputElement>
-  ) {
+  function chooseFile(e: ChangeEvent<HTMLInputElement>) {
     const next = e.target.files?.[0] ?? null
 
     if (preview) {
@@ -166,17 +158,13 @@ export default function AdminStream() {
     }
 
     setFile(next)
-    setPreview(
-      next ? URL.createObjectURL(next) : ''
-    )
+    setPreview(next ? URL.createObjectURL(next) : '')
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
 
-    if (!admin || !title.trim() || sending) {
-      return
-    }
+    if (!admin || !title.trim() || sending) return
 
     setSending(true)
     setError('')
@@ -221,16 +209,15 @@ export default function AdminStream() {
       }
     }
 
-    const { error: insertError } =
-      await supabase.rpc(
-        'create_admin_stream_post',
-        {
-          p_event_id: admin.event_id,
-          p_title: title.trim(),
-          p_body: body.trim() || null,
-          p_image_path: imagePath,
-        }
-      )
+    const { error: insertError } = await supabase.rpc(
+      'create_admin_stream_post',
+      {
+        p_event_id: admin.event_id,
+        p_title: title.trim(),
+        p_body: body.trim() || null,
+        p_image_path: imagePath,
+      }
+    )
 
     if (insertError) {
       if (imagePath) {
@@ -272,13 +259,12 @@ export default function AdminStream() {
     setError('')
     setMessage('')
 
-    const { error: deleteError } =
-      await supabase.rpc(
-        'delete_admin_stream_post',
-        {
-          p_stream_post_id: post.id,
-        }
-      )
+    const { error: deleteError } = await supabase.rpc(
+      'delete_admin_stream_post',
+      {
+        p_stream_post_id: post.id,
+      }
+    )
 
     if (deleteError) {
       setError(deleteError.message)
@@ -318,17 +304,11 @@ export default function AdminStream() {
       className="grid"
     >
       <div>
-        <Link
-          className="backLink"
-          href="/admin"
-        >
+        <Link className="backLink" href="/admin">
           ← Dashboard
         </Link>
 
-        <div
-          className="brand"
-          style={{ marginTop: 12 }}
-        >
+        <div className="brand" style={{ marginTop: 12 }}>
           OUTING 2026 ADMIN
         </div>
 
@@ -365,9 +345,7 @@ export default function AdminStream() {
         <input
           className="postInput"
           value={title}
-          onChange={(e) =>
-            setTitle(e.target.value)
-          }
+          onChange={(e) => setTitle(e.target.value)}
           maxLength={80}
           required
           placeholder="例：Night Eventスタート！"
@@ -375,27 +353,21 @@ export default function AdminStream() {
 
         <label>
           <b>本文</b>{' '}
-          <span className="muted">
-            （任意）
-          </span>
+          <span className="muted">（任意）</span>
         </label>
 
         <textarea
           className="postInput"
           rows={5}
           value={body}
-          onChange={(e) =>
-            setBody(e.target.value)
-          }
+          onChange={(e) => setBody(e.target.value)}
           maxLength={500}
           placeholder="集合場所や結果など"
         />
 
         <label>
           <b>写真</b>{' '}
-          <span className="muted">
-            （任意）
-          </span>
+          <span className="muted">（任意）</span>
         </label>
 
         <input
@@ -414,11 +386,7 @@ export default function AdminStream() {
 
         <button
           className="btn primary"
-          disabled={
-            !admin ||
-            sending ||
-            !title.trim()
-          }
+          disabled={!admin || sending || !title.trim()}
         >
           {sending
             ? '公開中...'
@@ -443,18 +411,11 @@ export default function AdminStream() {
       ) : (
         <div className="grid">
           {posts.map((post) => (
-            <article
-              className="card"
-              key={post.id}
-            >
+            <article className="card" key={post.id}>
               {post.image_path &&
                 signedUrls[post.image_path] && (
                   <img
-                    src={
-                      signedUrls[
-                        post.image_path
-                      ]
-                    }
+                    src={signedUrls[post.image_path]}
                     alt={post.title}
                     style={{
                       width: '100%',
@@ -468,31 +429,23 @@ export default function AdminStream() {
 
               <h3>{post.title}</h3>
 
-              {post.body && (
-                <p>{post.body}</p>
-              )}
+              {post.body && <p>{post.body}</p>}
 
               <p className="muted">
                 投稿者：
-                {post.admin_users
-                  ?.display_name ??
-                  '運営'}
+                {post.admin_users?.display_name ?? '運営'}
                 {' / '}
-                {new Date(
-                  post.created_at
-                ).toLocaleString('ja-JP')}
+                {new Date(post.created_at).toLocaleString(
+                  'ja-JP'
+                )}
               </p>
 
               <button
                 type="button"
                 className="btn outline"
                 style={{ color: '#d33' }}
-                disabled={
-                  deletingId === post.id
-                }
-                onClick={() =>
-                  void deletePost(post)
-                }
+                disabled={deletingId === post.id}
+                onClick={() => void deletePost(post)}
               >
                 {deletingId === post.id
                   ? '削除中...'
