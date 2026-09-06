@@ -2,16 +2,31 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import {
   BookOpen,
-  Camera,
-  CheckCircle2,
+  Check,
   HomeIcon,
   Images,
   Target,
   UserRound,
+  Users,
+  ArrowUpRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 
-export default async function Missions() {
+export default async function Missions({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    filter?: string
+  }>
+}) {
+  const { filter } = await searchParams
+
+  const activeFilter =
+    filter === 'clear'
+      ? 'clear'
+      : filter === 'unclear'
+        ? 'unclear'
+        : 'all'
   const supabase = await createClient()
   const eventId = process.env.NEXT_PUBLIC_EVENT_ID
 
@@ -32,9 +47,11 @@ export default async function Missions() {
             style={{ padding: 20 }}
           >
             <p className="uiEyebrow">ERROR</p>
+
             <h1 className="uiTitle">
               設定エラー
             </h1>
+
             <p className="uiMuted">
               NEXT_PUBLIC_EVENT_ID が設定されていません。
             </p>
@@ -69,6 +86,7 @@ export default async function Missions() {
             style={{ padding: 20 }}
           >
             <p className="uiEyebrow">ERROR</p>
+
             <h2
               style={{
                 margin: '6px 0 8px',
@@ -172,19 +190,41 @@ export default async function Missions() {
       })
       .map((assignment: any) => ({
         assignmentId: assignment.id,
+
         cleared: Boolean(
           assignment.first_cleared_at,
         ),
+
         id: assignment.mission.id,
-        title: assignment.mission.title,
+
+        title:
+          assignment.mission.title,
+
         difficulty:
           assignment.mission.difficulty,
-        points: assignment.mission.points,
+
+        points:
+          assignment.mission.points,
+
         dropNumber:
           assignment.mission.drop.drop_number,
-      })) ?? []
 
-  return (
+        requiredMentions:
+          assignment.mission.required_mentions,
+      })) ?? []
+ 
+ const visibleMissions =
+    activeFilter === 'clear'
+      ? missions.filter(
+          (mission) => mission.cleared,
+        )
+      : activeFilter === 'unclear'
+        ? missions.filter(
+            (mission) => !mission.cleared,
+          )
+        : missions
+  
+return (
     <main
       className="participantUi"
       style={
@@ -195,54 +235,146 @@ export default async function Missions() {
       }
     >
       <div className="participantContent">
+
+        {/* =========================
+            HEADER
+        ========================= */}
+
         <header
           style={{
-            paddingTop: 18,
-            marginBottom: 28,
+            paddingTop: 24,
+            marginBottom: 22,
           }}
         >
-          <p className="uiEyebrow">
+          <p
+            className="outingSerifEn"
+            style={{
+              margin: 0,
+              color: '#fff',
+              fontSize: 25,
+              lineHeight: 1,
+              letterSpacing: '.12em',
+            }}
+          >
             OUTING 2026
           </p>
 
-          <h1
-            className="uiTitle"
+         
+                   <h1
+            className="outingSerifEn"
             style={{
-              marginTop: 6,
+              margin: '28px 0 0',
+              color: '#fff',
+              fontSize: 30,
+              fontWeight: 500,
+              lineHeight: 1,
+              letterSpacing: '.16em',
             }}
           >
-            Mission
+            MISSIONS
           </h1>
 
-          <p
-            className="uiMuted"
+                </header>
+
+                   {/* =========================
+            FILTER TABS
+        ========================= */}
+
+        {missions.length > 0 && (
+          <div
             style={{
-              marginTop: 8,
+              display: 'flex',
+              gap: 6,
+              marginBottom: 16,
             }}
           >
-            あなたに割り当てられたPhoto Mission
-          </p>
-        </header>
+            {[
+              {
+                key: 'all',
+                label: 'ALL',
+                href: '/missions',
+              },
+              {
+                key: 'unclear',
+                label: 'UNCLEAR',
+                href: '/missions?filter=unclear',
+              },
+              {
+                key: 'clear',
+                label: 'CLEAR',
+                href: '/missions?filter=clear',
+              },
+            ].map((tab) => {
+              const active =
+                activeFilter === tab.key
 
-        {missions.length === 0 && (
+              return (
+                <Link
+                  key={tab.key}
+                  href={tab.href}
+                  className="outingSerifEn"
+                  style={{
+                    flex: 1,
+                    padding: '9px 8px 8px',
+                    textAlign: 'center',
+                    borderRadius: 7,
+                    textDecoration: 'none',
+
+                    background: active
+                      ? 'rgba(113,72,215,.82)'
+                      : 'rgba(255,255,255,.08)',
+
+                    border: active
+                      ? '1px solid rgba(182,155,255,.35)'
+                      : '1px solid rgba(255,255,255,.06)',
+
+                    color: active
+                      ? '#fff'
+                      : 'rgba(255,255,255,.38)',
+
+                    fontSize: 10,
+                    fontWeight: 600,
+                    letterSpacing: '.13em',
+
+                    boxShadow: active
+                      ? '0 8px 22px rgba(87,49,177,.22)'
+                      : 'none',
+                  }}
+                >
+                  {tab.label}
+                </Link>
+              )
+            })}
+          </div>
+        )}
+
+
+
+  {/* =========================
+            EMPTY
+        ========================= */}
+
+        {visibleMissions.length === 0 && (
           <section
             className="glassCardStrong"
             style={{
-              padding: '30px 20px',
+              padding: '34px 20px',
               textAlign: 'center',
+              marginTop: 18,
             }}
           >
             <Target
-              size={26}
-              strokeWidth={1.5}
+              size={25}
+              strokeWidth={1.4}
               style={{
-                opacity: 0.55,
+                opacity: 0.5,
               }}
             />
 
             <h2
+              className="outingSerifJa"
               style={{
-                margin: '14px 0 6px',
+                margin: '14px 0 7px',
                 fontSize: 18,
               }}
             >
@@ -250,9 +382,12 @@ export default async function Missions() {
             </h2>
 
             <p
-              className="uiMuted"
+              className="outingSans"
               style={{
                 margin: 0,
+                color:
+                  'rgba(255,255,255,.55)',
+                fontSize: 12,
               }}
             >
               新しいDropが公開されると
@@ -261,195 +396,301 @@ export default async function Missions() {
           </section>
         )}
 
+        {/* =========================
+            MISSION CARDS
+        ========================= */}
+
         <section
           style={{
             display: 'grid',
-            gap: 18,
+            gap: 12,
             paddingBottom: 120,
           }}
         >
-          {missions.map((mission) => {
-            const params =
-              new URLSearchParams({
-                title: mission.title,
-                points: String(
-                  mission.points,
-                ),
-                missionId: mission.id,
-                eventId,
-              })
+          {visibleMissions.map(
+            (mission) => {
+     
+        const params =
+  new URLSearchParams({
+    title: mission.title,
+    points: String(mission.points),
+    missionId: mission.id,
+    eventId,
+    dropNumber: String(mission.dropNumber),
+  })
 
-            const cameraHref =
-              `/camera?${params.toString()}`
 
-            return (
-              <article
-                key={mission.assignmentId}
-                className="photoCard"
-                style={{
-                  minHeight: 360,
-                  opacity:
-                    mission.cleared
-                      ? 0.72
-                      : 1,
-                }}
-              >
-                <img
-                  src="/mission-default.jpg"
-                  alt=""
-                  className="photoCardImage"
-                />
+              const cameraHref =
+                `/camera?${params.toString()}`
 
-                <div
-                  className="photoCardContent"
+              return (
+                <Link
+                  key={
+                    mission.assignmentId
+                  }
+                  href={`/missions/${mission.id}`}
                   style={{
-                    minHeight: 360,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent:
-                      'space-between',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                    display: 'block',
                   }}
                 >
-                  <div>
+                  <article
+                    style={{
+                      position: 'relative',
+                      height: 156,
+                      overflow: 'hidden',
+                      borderRadius: 10,
+
+                      border:
+                        '1px solid rgba(255,255,255,.10)',
+
+                      boxShadow:
+                        '0 15px 35px rgba(0,0,0,.22)',
+
+                      opacity:
+                        mission.cleared
+                          ? 0.76
+                          : 1,
+                    }}
+                  >
+                    {/* PHOTO */}
+
+                    <img
+                      src="/mission-default.jpg"
+                      alt=""
+                      style={{
+                        position:
+                          'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block',
+                      }}
+                    />
+
+                    {/* DARK GRADIENT */}
+
                     <div
                       style={{
+                        position:
+                          'absolute',
+                        inset: 0,
+
+                        background:
+                          'linear-gradient(90deg, rgba(5,5,9,.88) 0%, rgba(5,5,9,.48) 55%, rgba(5,5,9,.12) 100%), linear-gradient(to top, rgba(0,0,0,.48), transparent 55%)',
+                      }}
+                    />
+
+                    {/* CONTENT */}
+
+                    <div
+                      style={{
+                        position:
+                          'relative',
+                        zIndex: 1,
+
+                        height: '100%',
+                        padding:
+                          '15px 16px',
+
                         display: 'flex',
-                        alignItems: 'center',
+                        flexDirection:
+                          'column',
+
                         justifyContent:
                           'space-between',
-                        gap: 12,
                       }}
                     >
-                      <span
-                        className="uiEyebrow"
-                        style={{
-                          color: '#fff',
-                        }}
-                      >
-                        DROP{' '}
-                        {mission.dropNumber}
-                      </span>
+                      {/* TOP */}
 
-                      <strong
-                        style={{
-                          fontSize: 13,
-                          color:
-                            '#d8c9ff',
-                        }}
-                      >
-                        +{mission.points} PT
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div>
-                    {mission.cleared && (
                       <div
                         style={{
-                          display: 'inline-flex',
+                          display: 'flex',
                           alignItems:
-                            'center',
-                          gap: 6,
-                          marginBottom: 10,
-                          padding:
-                            '6px 9px',
-                          borderRadius: 999,
-                          background:
-                            'rgba(139,92,246,.20)',
-                          border:
-                            '1px solid rgba(167,139,250,.25)',
-                          fontSize: 11,
-                          fontWeight: 750,
+                            'flex-start',
+                          justifyContent:
+                            'space-between',
+                          gap: 12,
                         }}
                       >
-                        <CheckCircle2
-                          size={14}
-                        />
-                        CLEAR
-                      </div>
-                    )}
+                        <span
+                          className="outingSerifEn"
+                          style={{
+                            color:
+                              'rgba(255,255,255,.65)',
+                            fontSize: 9,
+                            fontWeight: 600,
+                            letterSpacing:
+                              '.16em',
+                          }}
+                        >
+                          DROP{' '}
+                          {String(
+                            mission.dropNumber,
+                          ).padStart(2, '0')}
+                        </span>
 
-                    <h2
-                      style={{
-                        margin: 0,
-                        color: '#fff',
-                        fontSize: 28,
-                        lineHeight: 1.25,
-                        letterSpacing:
-                          '-.03em',
-                      }}
-                    >
-                      {mission.title}
-                    </h2>
+                        <span
+                          className="outingSerifEn"
+                          style={{
+                            color:
+                              '#d9c8ff',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            letterSpacing:
+                              '.08em',
+                          }}
+                        >
+                          +{mission.points} PT
+                        </span>
+                      </div>
+
+                      {/* BOTTOM */}
+
+                      <div>
+                        {mission.cleared && (
+                          <div
+                            style={{
+                              display:
+                                'inline-flex',
+                              alignItems:
+                                'center',
+                              gap: 4,
+
+                              marginBottom: 5,
+
+                              color:
+                                '#d8c8ff',
+
+                              fontSize: 9,
+                              fontWeight: 700,
+                              letterSpacing:
+                                '.10em',
+                            }}
+                          >
+                            <Check
+                              size={11}
+                              strokeWidth={
+                                2
+                              }
+                            />
+                            CLEAR
+                          </div>
+                        )}
+
+                        <h2
+                          className="outingSerifJa"
+                          style={{
+                            margin: 0,
+                            maxWidth: '78%',
+
+                            color: '#fff',
+
+                            fontSize: 19,
+                            fontWeight: 400,
+                            lineHeight: 1.45,
+
+                            textShadow:
+                              '0 2px 12px rgba(0,0,0,.5)',
+                          }}
+                        >
+                          {mission.title}
+                        </h2>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems:
+                              'center',
+                            gap: 7,
+                            marginTop: 8,
+
+                            color:
+                              'rgba(255,255,255,.58)',
+
+                            fontSize: 9,
+                          }}
+                        >
+                          <Users
+                            size={11}
+                            strokeWidth={
+                              1.6
+                            }
+                          />
+
+                          <span
+                            className="outingSans"
+                          >
+                            メンション任意
+                          </span>
+
+                          {mission.difficulty && (
+                            <>
+                              <span>•</span>
+
+                              <span
+                                className="outingSans"
+                              >
+                                {
+                                  mission.difficulty
+                                }
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ARROW */}
 
                     <div
                       style={{
-                        display: 'flex',
-                        gap: 10,
-                        flexWrap: 'wrap',
-                        marginTop: 12,
-                        color:
-                          'rgba(255,255,255,.64)',
-                        fontSize: 12,
+                        position:
+                          'absolute',
+                        right: 13,
+                        bottom: 13,
+                        zIndex: 2,
+
+                        width: 29,
+                        height: 29,
+
+                        display: 'grid',
+                        placeItems: 'center',
+
+                        borderRadius:
+                          '50%',
+
+                        background:
+                          'rgba(9,8,15,.55)',
+
+                        border:
+                          '1px solid rgba(255,255,255,.22)',
+
+                        backdropFilter:
+                          'blur(8px)',
                       }}
                     >
-                      <span>
-                        {mission.difficulty}
-                      </span>
-
-                      <span>・</span>
-
-                      <span>
-                        メンション任意
-                      </span>
-                    </div>
-
-                    {mission.cleared && (
-                      <p
-                        style={{
-                          margin:
-                            '10px 0 0',
-                          color:
-                            'rgba(255,255,255,.56)',
-                          fontSize: 12,
-                        }}
-                      >
-                        再撮影OK・追加ポイントはありません。
-                      </p>
-                    )}
-
-                    <Link
-                      href={cameraHref}
-                      className="uiPrimaryButton"
-                      style={{
-                        marginTop: 20,
-                        width: '100%',
-                        justifyContent:
-                          'center',
-                        textDecoration:
-                          'none',
-                        display:
-                          'inline-flex',
-                        alignItems:
-                          'center',
-                        gap: 8,
-                      }}
-                    >
-                      <Camera
-                        size={18}
-                        strokeWidth={1.8}
+                      <ArrowUpRight
+                        size={14}
+                        color="#fff"
+                        strokeWidth={
+                          1.5
+                        }
                       />
-                      {mission.cleared
-                        ? 'もう一度撮る'
-                        : 'カメラを開く'}
-                    </Link>
-                  </div>
-                </div>
-              </article>
-            )
-          })}
+                    </div>
+                  </article>
+                </Link>
+              )
+            },
+          )}
         </section>
       </div>
+
+      {/* =========================
+          BOTTOM NAV
+      ========================= */}
 
       <nav className="outingNav">
         <Link href="/">

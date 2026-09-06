@@ -12,6 +12,7 @@ import {
   UsersRound,
   ChevronDown,
 } from 'lucide-react'
+
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -19,64 +20,64 @@ export const dynamic = 'force-dynamic'
 const categories = [
   {
     type: 'schedule',
-    label: 'Schedule',
-    subtitle: '当日のスケジュール',
+    label: 'SCHEDULE',
+    title: 'タイムスケジュール',
     icon: CalendarDays,
   },
   {
     type: 'packing',
-    label: '持ち物',
-    subtitle: '必要なもの・準備物',
+    label: 'PACKING',
+    title: '持ち物',
     icon: Package,
   },
   {
     type: 'rules',
-    label: '注意事項',
-    subtitle: 'ルール・確認事項',
+    label: 'RULES',
+    title: '注意事項',
     icon: CircleAlert,
   },
   {
     type: 'place',
-    label: '施設・集合場所',
-    subtitle: '場所・アクセス情報',
+    label: 'PLACE',
+    title: '施設・集合場所',
     icon: MapPin,
   },
   {
     type: 'groups',
-    label: '班分け',
-    subtitle: 'グループ・チーム情報',
+    label: 'GROUPS',
+    title: '班分け',
     icon: UsersRound,
   },
   {
     type: 'other',
-    label: 'その他',
-    subtitle: 'しおり全文・追加情報',
+    label: 'INFORMATION',
+    title: 'その他',
     icon: BookOpen,
   },
 ]
 
 export default async function Guide() {
   const supabase = await createClient()
-  const eventId = process.env.NEXT_PUBLIC_EVENT_ID
+  const eventId =
+    process.env.NEXT_PUBLIC_EVENT_ID
 
   if (!eventId) {
     return (
-      <main
-        className="participantUi"
-        style={
-          {
-            '--participant-bg-image':
-              'url("/outing-bg.jpg")',
-          } as React.CSSProperties
-        }
-      >
+      <main className="participantUi">
         <div className="participantContent">
-          <section className="glassCardStrong">
-            <p className="uiEyebrow">ERROR</p>
-            <h1 className="uiTitle">
+          <section
+            className="glassCardStrong"
+            style={{ padding: 18 }}
+          >
+            <p className="outingSerifEn">
+              ERROR
+            </p>
+
+            <h1 className="outingSerifJa">
               設定エラー
             </h1>
-            <p className="uiMuted">
+
+            <p className="uiMuted outingSans">
               EVENT ID が設定されていません。
             </p>
           </section>
@@ -85,7 +86,14 @@ export default async function Guide() {
     )
   }
 
-  const { data: sections, error } = await supabase
+  /* =========================
+      GUIDE CONTENT
+  ========================= */
+
+  const {
+    data: sections,
+    error,
+  } = await supabase
     .from('guide_sections')
     .select(
       'id,section_type,title,body,sort_order',
@@ -94,6 +102,39 @@ export default async function Guide() {
     .order('sort_order', {
       ascending: true,
     })
+
+  /* =========================
+      GUIDE HERO IMAGE
+  ========================= */
+
+  const { data: eventData } =
+    await supabase
+      .from('events')
+      .select('guide_background_path')
+      .eq('id', eventId)
+      .maybeSingle()
+
+  let guideImageUrl =
+    '/outing-bg.jpg'
+
+  const guideBackgroundPath =
+    eventData?.guide_background_path ?? ''
+
+  if (guideBackgroundPath) {
+    const {
+      data: signedBackground,
+    } = await supabase.storage
+      .from('outing-photos')
+      .createSignedUrl(
+        guideBackgroundPath,
+        60 * 60,
+      )
+
+    if (signedBackground?.signedUrl) {
+      guideImageUrl =
+        signedBackground.signedUrl
+    }
+  }
 
   return (
     <main
@@ -106,36 +147,93 @@ export default async function Guide() {
       }
     >
       <div className="participantContent">
+
+        {/* =========================
+            HEADER
+        ========================= */}
+
         <header
           style={{
-            paddingTop: 18,
-            marginBottom: 30,
+            paddingTop: 24,
+            marginBottom: 20,
           }}
         >
-          <p className="uiEyebrow">
+          <p
+            className="outingSerifEn"
+            style={{
+              margin: 0,
+              color:
+                'rgba(255,255,255,.58)',
+              fontSize: 11,
+              letterSpacing: '.18em',
+            }}
+          >
             OUTING 2026
           </p>
 
           <h1
-            className="uiTitle"
+            className="outingSerifEn"
             style={{
-              marginTop: 6,
+              margin: '7px 0 0',
+              color: '#fff',
+              fontSize: 34,
+              fontWeight: 500,
+              lineHeight: 1,
+              letterSpacing: '.14em',
             }}
           >
-            Guide
+            GUIDE
           </h1>
-
-          <p
-            className="uiMuted"
-            style={{
-              marginTop: 8,
-              maxWidth: 340,
-            }}
-          >
-            当日のスケジュールや持ち物、
-            集合場所などを確認できます。
-          </p>
         </header>
+
+        {/* =========================
+            HERO PHOTO
+        ========================= */}
+
+        <section
+          style={{
+            position: 'relative',
+            overflow: 'hidden',
+            width: '100%',
+            aspectRatio: '16 / 9',
+            marginBottom: 26,
+            borderRadius: 18,
+
+            border:
+              '1px solid rgba(255,255,255,.10)',
+
+            boxShadow:
+              '0 18px 45px rgba(0,0,0,.26)',
+          }}
+        >
+          <img
+            src={guideImageUrl}
+            alt=""
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'block',
+              objectFit: 'cover',
+              objectPosition: 'center',
+            }}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+
+              background:
+                'linear-gradient(to bottom, rgba(0,0,0,.02), rgba(0,0,0,.14))',
+
+              pointerEvents: 'none',
+            }}
+          />
+        </section>
+
+        {/* =========================
+            ERROR
+        ========================= */}
 
         {error && (
           <section
@@ -145,196 +243,284 @@ export default async function Guide() {
               marginBottom: 16,
             }}
           >
-            <p className="uiEyebrow">
+            <p
+              className="outingSerifEn"
+              style={{
+                margin: 0,
+                color:
+                  'rgba(255,255,255,.55)',
+                fontSize: 11,
+                letterSpacing: '.16em',
+              }}
+            >
               ERROR
             </p>
 
             <h2
+              className="outingSerifJa"
               style={{
-                margin: '6px 0 8px',
+                margin: '7px 0 8px',
+                color: '#fff',
                 fontSize: 18,
+                fontWeight: 400,
               }}
             >
               Guideを読み込めませんでした
             </h2>
 
-            <p className="uiMuted">
+            <p className="uiMuted outingSans">
               {error.message}
             </p>
           </section>
         )}
 
+        {/* =========================
+            GUIDE SECTIONS
+        ========================= */}
+
         {!error && (
           <section
             style={{
-              display: 'grid',
-              gap: 12,
               paddingBottom: 110,
             }}
           >
-            {categories.map((category) => {
-              const categorySections =
-                sections?.filter(
-                  (section) =>
-                    section.section_type ===
-                    category.type,
-                ) ?? []
+            {categories.map(
+              (
+                category,
+                categoryIndex,
+              ) => {
+                const categorySections =
+                  sections?.filter(
+                    (section) =>
+                      section.section_type ===
+                      category.type,
+                  ) ?? []
 
-              const Icon = category.icon
+                const Icon =
+                  category.icon
 
-              return (
-                <details
-                  key={category.type}
-                  className="glassCardStrong"
-                  style={{
-                    overflow: 'hidden',
-                  }}
-                >
-                  <summary
-                    style={{
-                      listStyle: 'none',
-                      cursor: 'pointer',
-                      display: 'grid',
-                      gridTemplateColumns:
-                        '44px minmax(0,1fr) auto',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '16px 16px',
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 14,
-                        display: 'grid',
-                        placeItems: 'center',
-                        background:
-                          'rgba(139,92,246,.12)',
-                        border:
-                          '1px solid rgba(167,139,250,.14)',
-                        color: '#b7a0ff',
-                      }}
-                    >
-                      <Icon
-                        size={20}
-                        strokeWidth={1.7}
-                      />
-                    </span>
-
-                    <span
-                      style={{
-                        minWidth: 0,
-                      }}
-                    >
-                      <strong
-                        style={{
-                          display: 'block',
-                          color: '#fff',
-                          fontSize: 15,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {category.label}
-                      </strong>
-
-                      <span
-                        style={{
-                          display: 'block',
-                          marginTop: 3,
-                          color:
-                            'rgba(255,255,255,.46)',
-                          fontSize: 11,
-                        }}
-                      >
-                        {category.subtitle}
-                      </span>
-                    </span>
-
-                    <ChevronDown
-                      size={18}
-                      strokeWidth={1.7}
-                      style={{
-                        color:
-                          'rgba(255,255,255,.48)',
-                      }}
-                    />
-                  </summary>
-
+                return (
                   <div
+                    key={category.type}
                     style={{
                       borderTop:
-                        '1px solid rgba(255,255,255,.07)',
-                      padding:
-                        '4px 16px 18px',
+                        categoryIndex === 0
+                          ? '1px solid rgba(255,255,255,.08)'
+                          : undefined,
+
+                      borderBottom:
+                        '1px solid rgba(255,255,255,.08)',
                     }}
                   >
-                    {categorySections.length ===
-                    0 ? (
-                      <p
-                        className="uiMuted"
+                    <details>
+                      <summary
                         style={{
-                          margin:
-                            '16px 0 2px',
-                          fontSize: 13,
+                          listStyle: 'none',
+                          cursor: 'pointer',
+
+                          display: 'grid',
+
+                          gridTemplateColumns:
+                            '40px minmax(0,1fr) auto',
+
+                          alignItems:
+                            'center',
+
+                          gap: 12,
+
+                          padding:
+                            '16px 2px',
                         }}
                       >
-                        現在情報はありません。
-                      </p>
-                    ) : (
-                      categorySections.map(
-                        (section, index) => (
-                          <article
-                            key={section.id}
+                        <span
+                          style={{
+                            width: 40,
+                            height: 40,
+
+                            display: 'grid',
+                            placeItems:
+                              'center',
+
+                            borderRadius:
+                              999,
+
+                            background:
+                              'rgba(128,84,220,.18)',
+
+                            border:
+                              '1px solid rgba(169,139,255,.16)',
+
+                            color:
+                              '#c1adff',
+                          }}
+                        >
+                          <Icon
+                            size={18}
+                            strokeWidth={
+                              1.6
+                            }
+                          />
+                        </span>
+
+                        <span
+                          style={{
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            className="outingSerifEn"
                             style={{
-                              padding:
-                                '17px 0',
-                              borderBottom:
-                                index ===
-                                categorySections.length -
-                                  1
-                                  ? 'none'
-                                  : '1px solid rgba(255,255,255,.06)',
+                              display:
+                                'block',
+
+                              color:
+                                'rgba(255,255,255,.48)',
+
+                              fontSize: 9,
+
+                              fontWeight:
+                                500,
+
+                              letterSpacing:
+                                '.18em',
                             }}
                           >
-                            <h2
-                              style={{
-                                margin: 0,
-                                color: '#fff',
-                                fontSize: 16,
-                                fontWeight: 700,
-                                letterSpacing:
-                                  '-.01em',
-                              }}
-                            >
-                              {section.title}
-                            </h2>
+                            {category.label}
+                          </span>
 
-                            <p
-                              style={{
-                                margin:
-                                  '9px 0 0',
-                                whiteSpace:
-                                  'pre-wrap',
-                                color:
-                                  'rgba(255,255,255,.68)',
-                                fontSize: 13,
-                                lineHeight: 1.8,
-                              }}
-                            >
-                              {section.body}
-                            </p>
-                          </article>
-                        ),
-                      )
-                    )}
+                          <strong
+                            className="outingSerifJa"
+                            style={{
+                              display:
+                                'block',
+
+                              marginTop: 2,
+
+                              color: '#fff',
+
+                              fontSize: 16,
+
+                              fontWeight:
+                                400,
+
+                              lineHeight:
+                                1.5,
+                            }}
+                          >
+                            {category.title}
+                          </strong>
+                        </span>
+
+                        <ChevronDown
+                          size={17}
+                          strokeWidth={1.5}
+                          style={{
+                            color:
+                              'rgba(255,255,255,.42)',
+                          }}
+                        />
+                      </summary>
+
+                      <div
+                        style={{
+                          padding:
+                            '0 2px 18px 52px',
+                        }}
+                      >
+                        {categorySections.length ===
+                        0 ? (
+                          <p
+                            className="uiMuted outingSans"
+                            style={{
+                              margin:
+                                '2px 0',
+
+                              fontSize: 13,
+                            }}
+                          >
+                            現在情報はありません。
+                          </p>
+                        ) : (
+                          categorySections.map(
+                            (
+                              section,
+                              index,
+                            ) => (
+                              <article
+                                key={
+                                  section.id
+                                }
+                                style={{
+                                  padding:
+                                    '14px 0',
+
+                                  borderBottom:
+                                    index ===
+                                    categorySections.length -
+                                      1
+                                      ? 'none'
+                                      : '1px solid rgba(255,255,255,.055)',
+                                }}
+                              >
+                                <h2
+                                  className="outingSerifJa"
+                                  style={{
+                                    margin: 0,
+
+                                    color:
+                                      '#fff',
+
+                                    fontSize:
+                                      15,
+
+                                    fontWeight:
+                                      400,
+
+                                    lineHeight:
+                                      1.55,
+                                  }}
+                                >
+                                  {section.title}
+                                </h2>
+
+                                <p
+                                  className="outingSans"
+                                  style={{
+                                    margin:
+                                      '7px 0 0',
+
+                                    whiteSpace:
+                                      'pre-wrap',
+
+                                    color:
+                                      'rgba(255,255,255,.62)',
+
+                                    fontSize:
+                                      13,
+
+                                    lineHeight:
+                                      1.85,
+                                  }}
+                                >
+                                  {section.body}
+                                </p>
+                              </article>
+                            ),
+                          )
+                        )}
+                      </div>
+                    </details>
                   </div>
-                </details>
-              )
-            })}
+                )
+              },
+            )}
           </section>
         )}
       </div>
+
+      {/* =========================
+          BOTTOM NAV
+      ========================= */}
 
       <nav className="outingNav">
         <Link href="/">

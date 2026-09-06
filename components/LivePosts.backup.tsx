@@ -23,10 +23,7 @@ type PostRow = {
   comment: string | null
   visibility: 'stream' | 'gallery'
   created_at: string
-  participants?: {
-    name: string
-    avatar_path: string | null
-  } | null
+  participants?: { name: string } | null
   missions?: {
     title: string
     points: number
@@ -35,10 +32,7 @@ type PostRow = {
   reactions?: { participant_id: string }[]
   post_mentions?: {
     participant_id: string
-    participants?: {
-    name: string
-    avatar_path: string | null
-  } | null
+    participants?: { name: string } | null
   }[]
 }
 
@@ -55,7 +49,6 @@ type AdminStreamRow = {
 type UserFeedItem = PostRow & {
   kind: 'participant'
   signedUrl: string
-  avatarUrl: string
   heartCount: number
   mine: boolean
 }
@@ -154,7 +147,7 @@ export default function LivePosts({
         comment,
         visibility,
         created_at,
-        participants!posts_participant_id_fkey(name,avatar_path),
+        participants!posts_participant_id_fkey(name),
         missions(title,points,difficulty),
         reactions(participant_id),
         post_mentions(
@@ -226,9 +219,6 @@ export default function LivePosts({
 
     const paths = [
       ...rows.map((row) => row.image_path),
-      ...rows
-        .map((row) => row.participants?.avatar_path ?? '')
-        .filter(Boolean),
       ...adminRows
         .map((row) => row.image_path ?? '')
         .filter(Boolean),
@@ -241,9 +231,6 @@ export default function LivePosts({
         ...post,
         kind: 'participant',
         signedUrl: urls.get(post.image_path) ?? '',
-        avatarUrl: post.participants?.avatar_path
-          ? (urls.get(post.participants.avatar_path) ?? '')
-          : '',
         heartCount: post.reactions?.length ?? 0,
         mine: post.participant_id === participant.id,
       }))
@@ -838,25 +825,15 @@ export default function LivePosts({
                     flexShrink: 0,
                     display: 'grid',
                     placeItems: 'center',
-                    overflow: 'hidden',
                     fontSize: 12,
                     fontWeight: 800,
                   }}
                 >
-                  {post.avatarUrl ? (
-                    <img
-                      src={post.avatarUrl}
-                      alt={`${post.participants?.name ?? '参加者'}のプロフィール画像`}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        display: 'block',
-                      }}
-                    />
-                  ) : (
-                    (post.participants?.name ?? 'P').slice(0, 1)
-                  )}
+                  {(
+                    post.participants
+                      ?.name ??
+                    'P'
+                  ).slice(0, 1)}
                 </span>
 
                 <span
@@ -1005,187 +982,232 @@ export default function LivePosts({
               )}
             </div>
 
-         {/* 投稿情報 */}
-<div
-  style={{
-    padding: '9px 14px 10px',
-    background:
-      'linear-gradient(180deg, rgba(10,10,15,.78), rgba(10,10,15,.62))',
-    backdropFilter: 'blur(16px)',
-    WebkitBackdropFilter: 'blur(16px)',
-  }}
->
-  {/* アクション */}
-  <div
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      minHeight: 32,
-      gap: 5,
-    }}
-  >
-    <button
-      type="button"
-      disabled={post.mine}
-      onClick={() => void toggleHeart(post)}
-      title={
-        post.mine
-          ? '自分の投稿にはハートできません'
-          : 'ハート'
-      }
-      style={{
-        border: 0,
-        background: 'transparent',
-        color: post.mine
-          ? 'rgba(255,255,255,.34)'
-          : '#fff',
-        padding: '3px 4px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        cursor: post.mine ? 'default' : 'pointer',
-        fontSize: 12,
-        fontWeight: 650,
-      }}
-    >
-      <Heart size={20} strokeWidth={1.8} />
-      {post.heartCount}
-    </button>
+            {/* 投稿情報 */}
+            <div
+              style={{
+                padding:
+                  '13px 14px 15px',
+              }}
+            >
+              {/* アクション */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={post.mine}
+                  onClick={() =>
+                    void toggleHeart(post)
+                  }
+                  title={
+                    post.mine
+                      ? '自分の投稿にはハートできません'
+                      : 'ハート'
+                  }
+                  style={{
+                    border: 0,
+                    background:
+                      'transparent',
+                    color: post.mine
+                      ? 'rgba(255,255,255,.34)'
+                      : '#fff',
+                    padding: '6px 5px',
+                    display:
+                      'inline-flex',
+                    alignItems:
+                      'center',
+                    gap: 6,
+                    cursor: post.mine
+                      ? 'default'
+                      : 'pointer',
+                    fontSize: 13,
+                    fontWeight: 650,
+                  }}
+                >
+                  <Heart
+                    size={21}
+                    strokeWidth={1.8}
+                  />
+                  {post.heartCount}
+                </button>
 
-    <button
-      type="button"
-      onClick={() => void downloadPhoto(post)}
-      title="写真を保存"
-      style={{
-        border: 0,
-        background: 'transparent',
-        color: 'rgba(255,255,255,.76)',
-        padding: 4,
-        display: 'grid',
-        placeItems: 'center',
-        cursor: 'pointer',
-      }}
-    >
-      <Download size={19} strokeWidth={1.7} />
-    </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void downloadPhoto(post)
+                  }
+                  title="写真を保存"
+                  style={{
+                    border: 0,
+                    background:
+                      'transparent',
+                    color:
+                      'rgba(255,255,255,.76)',
+                    padding: 6,
+                    display: 'grid',
+                    placeItems:
+                      'center',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Download
+                    size={20}
+                    strokeWidth={1.7}
+                  />
+                </button>
 
-    <span
-      style={{
-        marginLeft: 'auto',
-        padding: '4px 8px',
-        borderRadius: 999,
-        background: 'rgba(255,255,255,.06)',
-        border: '1px solid rgba(255,255,255,.07)',
-        color: 'rgba(255,255,255,.46)',
-        fontSize: 9,
-        textTransform: 'uppercase',
-        letterSpacing: '.08em',
-      }}
-    >
-      {post.visibility}
-    </span>
-  </div>
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    padding: '5px 8px',
+                    borderRadius: 999,
+                    background:
+                      'rgba(255,255,255,.06)',
+                    border:
+                      '1px solid rgba(255,255,255,.07)',
+                    color:
+                      'rgba(255,255,255,.46)',
+                    fontSize: 9,
+                    textTransform:
+                      'uppercase',
+                    letterSpacing:
+                      '.08em',
+                  }}
+                >
+                  {post.visibility}
+                </span>
+              </div>
 
-  {/* コメント */}
-  {post.comment && (
-    <p
-      style={{
-        margin: '5px 4px 0',
-        color: 'rgba(255,255,255,.82)',
-        fontSize: 12,
-        lineHeight: 1.5,
-      }}
-    >
-      {post.comment}
-    </p>
-  )}
+              {/* コメント */}
+              {post.comment && (
+                <p
+                  style={{
+                    margin: '8px 4px 0',
+                    color:
+                      'rgba(255,255,255,.82)',
+                    fontSize: 13,
+                    lineHeight: 1.65,
+                  }}
+                >
+                  {post.comment}
+                </p>
+              )}
 
-  {/* メンション */}
-  {!!post.post_mentions?.length && (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 5,
-        margin: '5px 4px 0',
-        color: 'rgba(255,255,255,.48)',
-        fontSize: 10,
-        lineHeight: 1.4,
-      }}
-    >
-      <UsersRound
-        size={12}
-        strokeWidth={1.7}
-        style={{ flexShrink: 0 }}
-      />
+              {/* メンション */}
+              {!!post.post_mentions
+                ?.length && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems:
+                      'flex-start',
+                    gap: 6,
+                    margin: '9px 4px 0',
+                    color:
+                      'rgba(255,255,255,.48)',
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <UsersRound
+                    size={14}
+                    strokeWidth={1.7}
+                    style={{
+                      flexShrink: 0,
+                      marginTop: 1,
+                    }}
+                  />
 
-      <span>
-        with{' '}
-        {post.post_mentions
-          .map(
-            (mention) =>
-              mention.participants?.name,
-          )
-          .filter(Boolean)
-          .join(' ・ ')}
-      </span>
-    </div>
-  )}
+                  <span>
+                    with{' '}
+                    {post.post_mentions
+                      .map(
+                        (mention) =>
+                          mention
+                            .participants
+                            ?.name,
+                      )
+                      .filter(Boolean)
+                      .join(' ・ ')}
+                  </span>
+                </div>
+              )}
 
-  {/* 自分の投稿操作 */}
-  {post.mine && (
-    <div
-      style={{
-        display: 'flex',
-        gap: 12,
-        marginTop: 7,
-        paddingTop: 7,
-        borderTop:
-          '1px solid rgba(255,255,255,.055)',
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => void editComment(post)}
-        style={{
-          border: 0,
-          background: 'transparent',
-          color: 'rgba(255,255,255,.48)',
-          padding: '2px 3px',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          cursor: 'pointer',
-          fontSize: 9,
-        }}
-      >
-        <Pencil size={12} strokeWidth={1.7} />
-        コメント編集
-      </button>
+              {/* 自分の投稿操作 */}
+              {post.mine && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    marginTop: 13,
+                    paddingTop: 12,
+                    borderTop:
+                      '1px solid rgba(255,255,255,.06)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void editComment(post)
+                    }
+                    style={{
+                      border: 0,
+                      background:
+                        'transparent',
+                      color:
+                        'rgba(255,255,255,.55)',
+                      padding: 4,
+                      display:
+                        'inline-flex',
+                      alignItems:
+                        'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                      fontSize: 10,
+                    }}
+                  >
+                    <Pencil
+                      size={13}
+                      strokeWidth={1.7}
+                    />
+                    コメント編集
+                  </button>
 
-      <button
-        type="button"
-        onClick={() => void deletePost(post)}
-        style={{
-          border: 0,
-          background: 'transparent',
-          color: 'rgba(255,130,130,.68)',
-          padding: '2px 3px',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          cursor: 'pointer',
-          fontSize: 9,
-        }}
-      >
-                   <Trash2 size={12} strokeWidth={1.7} />
-        削除
-      </button>
-    </div>
-  )}
-</div>
-
-</article>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void deletePost(post)
+                    }
+                    style={{
+                      border: 0,
+                      background:
+                        'transparent',
+                      color:
+                        'rgba(255,130,130,.72)',
+                      padding: 4,
+                      display:
+                        'inline-flex',
+                      alignItems:
+                        'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                      fontSize: 10,
+                    }}
+                  >
+                    <Trash2
+                      size={13}
+                      strokeWidth={1.7}
+                    />
+                    削除
+                  </button>
+                </div>
+              )}
+            </div>
+          </article>
         )
       })}
     </div>

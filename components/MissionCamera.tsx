@@ -49,6 +49,7 @@ export default function MissionCamera() {
   const [missionTitle, setMissionTitle] =
     useState("Photo Mission");
   const [missionPoints, setMissionPoints] = useState(20);
+const [dropNumber, setDropNumber] = useState("01");
   const [missionId, setMissionId] =
     useState<string | null>(null);
   const [eventId, setEventId] =
@@ -89,10 +90,15 @@ export default function MissionCamera() {
       window.location.search,
     );
 
-    const title = params.get("title");
-    const points = Number(params.get("points"));
-    const mId = params.get("missionId");
-    const eId = params.get("eventId");
+  const title = params.get("title");
+const points = Number(params.get("points"));
+const mId = params.get("missionId");
+const eId = params.get("eventId");
+const drop = params.get("dropNumber");
+
+if (drop) {
+  setDropNumber(drop.padStart(2, "0"));
+}
 
     if (title) setMissionTitle(title);
 
@@ -543,117 +549,461 @@ export default function MissionCamera() {
   }
 
   return (
-    <main className="cameraPage">
-      <div className="cameraTopbar">
-        <Link
-          href="/missions"
-          className="cameraBack"
-          aria-label="Mission一覧へ戻る"
-        >
-          ←
-        </Link>
-
-        <div>
-          <div className="brand">
-            OUTING 2026
-          </div>
-          <strong>Photo Mission</strong>
-        </div>
-      </div>
+    <main
+      className="participantUi"
+      style={
+        {
+          minHeight: "100dvh",
+          background: "#050509",
+          padding: 0,
+          overflowX: "hidden",
+        } as React.CSSProperties
+      }
+    >
+      {/* =========================
+          CAMERA
+      ========================= */}
 
       {stage === "camera" && (
-        <>
-          <section
-            className="cameraFrame"
-            aria-label="カメラ"
-          >
-            {!capture ? (
-              <video
-                ref={videoRef}
-                className={`cameraVideo ${
-                  facingMode === "user"
-                    ? "mirror"
-                    : ""
-                }`}
-                autoPlay
-                playsInline
-                muted
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                className="cameraPreview"
-                src={capture.previewUrl}
-                alt="撮影した写真のプレビュー"
-              />
-            )}
+        <section
+          aria-label="カメラ"
+          style={{
+            position: "relative",
+            width: "100%",
+            maxWidth: 520,
+            height: "100dvh",
+            margin: "0 auto",
+            overflow: "hidden",
+            background: "#050509",
+          }}
+        >
+          {/* CAMERA IMAGE */}
 
-            <div className="missionOverlay">
-              <span className="missionOverlayLabel">
-                MISSION
-              </span>
-              <strong>{missionTitle}</strong>
-              <span>+{missionPoints}pt</span>
+          {!capture ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                transform:
+                  facingMode === "user"
+                    ? "scaleX(-1)"
+                    : undefined,
+              }}
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={capture.previewUrl}
+              alt="撮影した写真のプレビュー"
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          )}
+
+          {/* CINEMATIC OVERLAY */}
+
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              background: `
+                linear-gradient(
+                  to bottom,
+                  rgba(3,3,8,.72) 0%,
+                  rgba(3,3,8,.22) 24%,
+                  rgba(3,3,8,.04) 48%,
+                  rgba(3,3,8,.22) 68%,
+                  rgba(3,3,8,.88) 100%
+                )
+              `,
+            }}
+          />
+
+          {/* GRID */}
+
+          {!capture && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                opacity: 0.2,
+                backgroundImage: `
+                  linear-gradient(
+                    to right,
+                    transparent 33.15%,
+                    rgba(255,255,255,.6) 33.33%,
+                    transparent 33.5%,
+                    transparent 66.48%,
+                    rgba(255,255,255,.6) 66.66%,
+                    transparent 66.84%
+                  ),
+                  linear-gradient(
+                    to bottom,
+                    transparent 33.15%,
+                    rgba(255,255,255,.6) 33.33%,
+                    transparent 33.5%,
+                    transparent 66.48%,
+                    rgba(255,255,255,.6) 66.66%,
+                    transparent 66.84%
+                  )
+                `,
+              }}
+            />
+          )}
+
+          {/* TOP BAR */}
+
+          <div
+            style={{
+              position: "absolute",
+              zIndex: 5,
+              top: 0,
+              left: 0,
+              right: 0,
+              padding:
+                "max(18px, env(safe-area-inset-top)) 18px 0",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Link
+              href="/missions"
+              aria-label="Mission一覧へ戻る"
+              style={{
+                width: 38,
+                height: 38,
+                display: "grid",
+                placeItems: "center",
+                borderRadius: "50%",
+                color: "#fff",
+                textDecoration: "none",
+                fontSize: 24,
+                fontWeight: 300,
+                background: "rgba(7,7,12,.38)",
+                border:
+                  "1px solid rgba(255,255,255,.15)",
+                backdropFilter: "blur(14px)",
+              }}
+            >
+              ×
+            </Link>
+
+            <div
+              className="outingSerifEn"
+              style={{
+                color: "#fff",
+                fontSize: 16,
+                fontWeight: 500,
+                letterSpacing: ".14em",
+                textShadow:
+                  "0 2px 12px rgba(0,0,0,.55)",
+              }}
+            >
+              OUTING 2026
             </div>
 
-            {!capture && (
-              <div className="cameraControls">
-                <button
-                  type="button"
-                  className={`cameraUtility ${
-                    flashOn ? "isOn" : ""
-                  }`}
-                  onClick={toggleFlash}
-                  disabled={
+            <div
+              style={{
+                width: 38,
+                height: 38,
+              }}
+            />
+          </div>
+
+          {/* MISSION GLASS CARD */}
+
+          <div
+            style={{
+              position: "absolute",
+              zIndex: 5,
+              top: "max(82px, calc(env(safe-area-inset-top) + 64px))",
+              left: 16,
+              right: 16,
+              padding: "15px 16px 16px",
+              borderRadius: 13,
+              background:
+                "linear-gradient(135deg, rgba(12,11,20,.67), rgba(9,8,15,.38))",
+              border:
+                "1px solid rgba(255,255,255,.16)",
+              backdropFilter: "blur(16px)",
+              boxShadow:
+                "0 15px 45px rgba(0,0,0,.20)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <span
+                className="outingSerifEn"
+                style={{
+                  color:
+                    "rgba(255,255,255,.62)",
+                  fontSize: 9,
+                  fontWeight: 600,
+                  letterSpacing: ".18em",
+                }}
+              >
+                DROP {dropNumber}
+              </span>
+
+              <span
+                className="outingSerifEn"
+                style={{
+                  color: "#dacaff",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: ".08em",
+                }}
+              >
+                +{missionPoints} PT
+              </span>
+            </div>
+
+            <h1
+              className="outingSerifJa"
+              style={{
+                margin: "8px 0 0",
+                maxWidth: "90%",
+                color: "#fff",
+                fontSize: 22,
+                fontWeight: 400,
+                lineHeight: 1.45,
+                textShadow:
+                  "0 2px 14px rgba(0,0,0,.35)",
+              }}
+            >
+              {missionTitle}
+            </h1>
+
+            <p
+              className="outingSans"
+              style={{
+                margin: "7px 0 0",
+                color:
+                  "rgba(255,255,255,.52)",
+                fontSize: 10,
+                letterSpacing: ".04em",
+              }}
+            >
+              PHOTO MISSION
+            </p>
+          </div>
+
+          {/* CAMERA STARTING */}
+
+          {starting && !capture && (
+            <div
+              className="outingSans"
+              style={{
+                position: "absolute",
+                zIndex: 6,
+                left: "50%",
+                top: "50%",
+                transform:
+                  "translate(-50%, -50%)",
+                padding: "9px 14px",
+                borderRadius: 999,
+                color: "#fff",
+                fontSize: 11,
+                background:
+                  "rgba(5,5,10,.55)",
+                backdropFilter: "blur(12px)",
+              }}
+            >
+              カメラを起動中...
+            </div>
+          )}
+
+          {/* CAMERA CONTROLS */}
+
+          {!capture && (
+            <div
+              style={{
+                position: "absolute",
+                zIndex: 6,
+                left: 0,
+                right: 0,
+                bottom:
+                  "max(31px, calc(env(safe-area-inset-bottom) + 20px))",
+                display: "grid",
+                gridTemplateColumns:
+                  "1fr 110px 1fr",
+                alignItems: "center",
+                padding: "0 28px",
+              }}
+            >
+              {/* FLASH */}
+
+              <button
+                type="button"
+                onClick={toggleFlash}
+                disabled={
+                  !flashSupported ||
+                  !cameraReady
+                }
+                aria-label="フラッシュ切替"
+                style={{
+                  justifySelf: "center",
+                  width: 44,
+                  height: 44,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: "50%",
+                  border:
+                    "1px solid rgba(255,255,255,.18)",
+                  background: flashOn
+                    ? "rgba(116,78,213,.78)"
+                    : "rgba(8,8,13,.48)",
+                  color: "#fff",
+                  backdropFilter: "blur(12px)",
+                  cursor: "pointer",
+                  opacity:
                     !flashSupported ||
                     !cameraReady
-                  }
-                  aria-label="フラッシュ切替"
-                >
-                  ⚡
-                </button>
+                      ? 0.35
+                      : 1,
+                  fontSize: 17,
+                }}
+              >
+                ⚡
+              </button>
 
-                <button
-                  type="button"
-                  className="shutter"
-                  onClick={takePhoto}
-                  disabled={
+              {/* SHUTTER */}
+
+              <button
+                type="button"
+                onClick={takePhoto}
+                disabled={
+                  !cameraReady || starting
+                }
+                aria-label="写真を撮影"
+                style={{
+                  justifySelf: "center",
+                  width: 82,
+                  height: 82,
+                  padding: 5,
+                  borderRadius: "50%",
+                  border:
+                    "2px solid rgba(255,255,255,.92)",
+                  background:
+                    "rgba(255,255,255,.08)",
+                  display: "grid",
+                  placeItems: "center",
+                  cursor: "pointer",
+                  opacity:
                     !cameraReady || starting
-                  }
-                  aria-label="写真を撮影"
-                >
-                  <span />
-                </button>
+                      ? 0.5
+                      : 1,
+                  boxShadow:
+                    "0 6px 28px rgba(0,0,0,.25)",
+                }}
+              >
+                <span
+                  style={{
+                    width: 66,
+                    height: 66,
+                    display: "block",
+                    borderRadius: "50%",
+                    background: "#fff",
+                  }}
+                />
+              </button>
 
-                <button
-                  type="button"
-                  className="cameraUtility"
-                  onClick={toggleCamera}
-                  disabled={
+              {/* SWITCH CAMERA */}
+
+              <button
+                type="button"
+                onClick={toggleCamera}
+                disabled={
+                  !cameraReady || starting
+                }
+                aria-label="前後カメラ切替"
+                style={{
+                  justifySelf: "center",
+                  width: 44,
+                  height: 44,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: "50%",
+                  border:
+                    "1px solid rgba(255,255,255,.18)",
+                  background:
+                    "rgba(8,8,13,.48)",
+                  color: "#fff",
+                  backdropFilter: "blur(12px)",
+                  cursor: "pointer",
+                  opacity:
                     !cameraReady || starting
-                  }
-                  aria-label="前後カメラ切替"
-                >
-                  ↻
-                </button>
-              </div>
-            )}
+                      ? 0.35
+                      : 1,
+                  fontSize: 20,
+                }}
+              >
+                ↻
+              </button>
+            </div>
+          )}
 
-            {starting && !capture && (
-              <div className="cameraStatus">
-                カメラを起動中...
-              </div>
-            )}
-          </section>
+          {/* CAPTURE REVIEW */}
 
           {capture && (
-            <section className="captureReview">
-              <div className="compressionInfo">
-                <span>WebP圧縮済み</span>
-                <b>
+            <div
+              style={{
+                position: "absolute",
+                zIndex: 7,
+                left: 16,
+                right: 16,
+                bottom:
+                  "max(24px, calc(env(safe-area-inset-bottom) + 16px))",
+              }}
+            >
+              <div
+                style={{
+                  padding: "14px 15px",
+                  marginBottom: 10,
+                  borderRadius: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent:
+                    "space-between",
+                  gap: 10,
+                  color:
+                    "rgba(255,255,255,.65)",
+                  fontSize: 10,
+                  background:
+                    "rgba(8,8,14,.58)",
+                  border:
+                    "1px solid rgba(255,255,255,.13)",
+                  backdropFilter: "blur(14px)",
+                }}
+              >
+                <span>WebP</span>
+
+                <span>
                   {capture.width} ×{" "}
                   {capture.height}
-                </b>
+                </span>
+
                 <span>
                   {formatBytes(
                     capture.compressedBytes,
@@ -661,55 +1011,226 @@ export default function MissionCamera() {
                 </span>
               </div>
 
-              <div className="reviewButtons">
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "1fr 1.45fr",
+                  gap: 9,
+                }}
+              >
                 <button
                   type="button"
-                  className="btn outline"
                   onClick={retake}
+                  className="outingSans"
+                  style={{
+                    minHeight: 52,
+                    borderRadius: 12,
+                    border:
+                      "1px solid rgba(255,255,255,.18)",
+                    background:
+                      "rgba(8,8,14,.58)",
+                    color: "#fff",
+                    backdropFilter:
+                      "blur(14px)",
+                    fontWeight: 600,
+                  }}
                 >
-                  ↻ 撮り直す
+                  撮り直す
                 </button>
 
                 <button
                   type="button"
-                  className="btn primary"
                   onClick={usePhoto}
+                  className="outingSans"
+                  style={{
+                    minHeight: 52,
+                    borderRadius: 12,
+                    border:
+                      "1px solid rgba(190,165,255,.25)",
+                    background:
+                      "linear-gradient(135deg,#7956d8,#6441c4)",
+                    color: "#fff",
+                    fontWeight: 700,
+                    boxShadow:
+                      "0 12px 30px rgba(89,54,175,.30)",
+                  }}
                 >
                   この写真を使う →
                 </button>
               </div>
-            </section>
+            </div>
           )}
-
-          {!capture && !error && (
-            <p className="cameraHint">
-              お題を見ながらそのまま撮影できます。
-              画像は長辺1800px・WebP品質82%に自動圧縮されます。
-            </p>
-          )}
-        </>
+        </section>
       )}
 
+      {/* =========================
+          EDIT
+      ========================= */}
+
       {stage === "edit" && capture && (
-        <section className="postFlow">
-          <div className="postPhotoWrap">
+        <section
+          className="participantContent"
+          style={{
+            paddingTop: 18,
+            paddingBottom: 40,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
+            <button
+              type="button"
+              onClick={retake}
+              aria-label="撮り直す"
+              style={{
+                width: 38,
+                height: 38,
+                display: "grid",
+                placeItems: "center",
+                borderRadius: "50%",
+                border:
+                  "1px solid rgba(255,255,255,.13)",
+                background:
+                  "rgba(255,255,255,.06)",
+                color: "#fff",
+                fontSize: 18,
+              }}
+            >
+              ←
+            </button>
+
+            <div>
+              <p
+                className="outingSerifEn"
+                style={{
+                  margin: 0,
+                  color:
+                    "rgba(255,255,255,.48)",
+                  fontSize: 9,
+                  letterSpacing: ".18em",
+                }}
+              >
+                DROP {dropNumber}
+              </p>
+
+              <strong
+                className="outingSerifEn"
+                style={{
+                  display: "block",
+                  marginTop: 3,
+                  color: "#fff",
+                  fontSize: 17,
+                  letterSpacing: ".10em",
+                }}
+              >
+                EDIT PHOTO
+              </strong>
+            </div>
+          </div>
+
+          <div
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              borderRadius: 14,
+              border:
+                "1px solid rgba(255,255,255,.10)",
+              boxShadow:
+                "0 18px 45px rgba(0,0,0,.25)",
+            }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={capture.previewUrl}
               alt="投稿する写真"
-              className="postPhoto"
+              style={{
+                width: "100%",
+                maxHeight: "48dvh",
+                objectFit: "cover",
+                display: "block",
+              }}
             />
 
-            <div className="postMissionTag">
-              <b>{missionTitle}</b>
-              <span>+{missionPoints}pt</span>
+            <div
+              style={{
+                position: "absolute",
+                left: 12,
+                right: 12,
+                bottom: 12,
+                padding: "11px 12px",
+                borderRadius: 10,
+                background:
+                  "rgba(7,7,12,.62)",
+                border:
+                  "1px solid rgba(255,255,255,.13)",
+                backdropFilter: "blur(12px)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent:
+                    "space-between",
+                  gap: 10,
+                }}
+              >
+                <b
+                  className="outingSerifJa"
+                  style={{
+                    color: "#fff",
+                    fontWeight: 400,
+                  }}
+                >
+                  {missionTitle}
+                </b>
+
+                <span
+                  className="outingSerifEn"
+                  style={{
+                    color: "#dacaff",
+                    fontSize: 11,
+                  }}
+                >
+                  +{missionPoints} PT
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="postCard">
-            <label htmlFor="mentionSearch">
+          <div
+            className="glassCardStrong"
+            style={{
+              padding: 16,
+              marginTop: 12,
+            }}
+          >
+            <label
+              htmlFor="mentionSearch"
+              className="outingSans"
+              style={{
+                display: "block",
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: 600,
+                marginBottom: 9,
+              }}
+            >
               メンション{" "}
-              <span>任意</span>
+              <span
+                style={{
+                  color:
+                    "rgba(255,255,255,.42)",
+                  fontWeight: 400,
+                }}
+              >
+                任意
+              </span>
             </label>
 
             <input
@@ -717,7 +1238,9 @@ export default function MissionCamera() {
               className="postInput"
               value={mentionQuery}
               onChange={(e) =>
-                setMentionQuery(e.target.value)
+                setMentionQuery(
+                  e.target.value,
+                )
               }
               placeholder="名前で検索"
               autoComplete="off"
@@ -743,29 +1266,68 @@ export default function MissionCamera() {
 
             {mentions.length > 0 && (
               <div className="mentionChips">
-                {mentions.map((person) => (
-                  <button
-                    type="button"
-                    key={person.id}
-                    onClick={() =>
-                      removeMention(person.id)
-                    }
-                  >
-                    @{person.name} ×
-                  </button>
-                ))}
+                {mentions.map(
+                  (person) => (
+                    <button
+                      type="button"
+                      key={person.id}
+                      onClick={() =>
+                        removeMention(
+                          person.id,
+                        )
+                      }
+                    >
+                      @{person.name} ×
+                    </button>
+                  ),
+                )}
               </div>
             )}
           </div>
 
-          <div className="postCard">
-            <div className="postLabelRow">
-              <label htmlFor="comment">
+          <div
+            className="glassCardStrong"
+            style={{
+              padding: 16,
+              marginTop: 10,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent:
+                  "space-between",
+                marginBottom: 9,
+              }}
+            >
+              <label
+                htmlFor="comment"
+                className="outingSans"
+                style={{
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
                 コメント{" "}
-                <span>任意</span>
+                <span
+                  style={{
+                    color:
+                      "rgba(255,255,255,.42)",
+                    fontWeight: 400,
+                  }}
+                >
+                  任意
+                </span>
               </label>
 
-              <small>
+              <small
+                style={{
+                  color:
+                    "rgba(255,255,255,.42)",
+                }}
+              >
                 {comment.length}/{MAX_COMMENT}
               </small>
             </div>
@@ -785,93 +1347,265 @@ export default function MissionCamera() {
 
           <button
             type="button"
-            className="btn primary postNext"
+            className="uiPrimaryButton outingSans"
             onClick={() =>
               setStage("publish")
             }
+            style={{
+              width: "100%",
+              justifyContent: "center",
+              marginTop: 14,
+              minHeight: 52,
+            }}
           >
-            次へ
+            次へ →
           </button>
         </section>
       )}
 
-      {stage === "publish" && capture && (
-        <section className="postFlow">
-          <div className="postCard">
-            <h2>公開先を選択</h2>
+      {/* =========================
+          PUBLISH
+      ========================= */}
 
-            <div className="visibilityGrid">
+      {stage === "publish" && capture && (
+        <section
+          className="participantContent"
+          style={{
+            paddingTop: 26,
+            paddingBottom: 40,
+          }}
+        >
+          <p
+            className="outingSerifEn"
+            style={{
+              margin: 0,
+              color:
+                "rgba(255,255,255,.48)",
+              fontSize: 10,
+              letterSpacing: ".18em",
+            }}
+          >
+            OUTING 2026
+          </p>
+
+          <h1
+            className="outingSerifEn"
+            style={{
+              margin: "8px 0 22px",
+              color: "#fff",
+              fontSize: 27,
+              fontWeight: 500,
+              letterSpacing: ".12em",
+            }}
+          >
+            PUBLISH
+          </h1>
+
+          <div
+            className="glassCardStrong"
+            style={{
+              padding: 16,
+            }}
+          >
+            <h2
+              className="outingSerifJa"
+              style={{
+                margin: "0 0 14px",
+                color: "#fff",
+                fontSize: 17,
+                fontWeight: 400,
+              }}
+            >
+              公開先を選択
+            </h2>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 8,
+              }}
+            >
               <button
                 type="button"
-                className={
-                  visibility === "stream"
-                    ? "selected"
-                    : ""
-                }
                 onClick={() =>
                   setVisibility("stream")
                 }
+                style={{
+                  padding: 15,
+                  textAlign: "left",
+                  borderRadius: 11,
+                  border:
+                    visibility === "stream"
+                      ? "1px solid rgba(184,157,255,.52)"
+                      : "1px solid rgba(255,255,255,.10)",
+                  background:
+                    visibility === "stream"
+                      ? "rgba(113,72,215,.24)"
+                      : "rgba(255,255,255,.05)",
+                  color: "#fff",
+                }}
               >
-                <b>📡 Stream</b>
-                <span>
+                <b
+                  className="outingSans"
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                  }}
+                >
+                  Stream
+                </b>
+
+                <span
+                  className="outingSans"
+                  style={{
+                    display: "block",
+                    marginTop: 5,
+                    color:
+                      "rgba(255,255,255,.48)",
+                    fontSize: 10,
+                  }}
+                >
                   StreamとMy Galleryに表示
                 </span>
               </button>
 
               <button
                 type="button"
-                className={
-                  visibility === "gallery"
-                    ? "selected"
-                    : ""
-                }
                 onClick={() =>
                   setVisibility("gallery")
                 }
+                style={{
+                  padding: 15,
+                  textAlign: "left",
+                  borderRadius: 11,
+                  border:
+                    visibility === "gallery"
+                      ? "1px solid rgba(184,157,255,.52)"
+                      : "1px solid rgba(255,255,255,.10)",
+                  background:
+                    visibility === "gallery"
+                      ? "rgba(113,72,215,.24)"
+                      : "rgba(255,255,255,.05)",
+                  color: "#fff",
+                }}
               >
-                <b>🖼️ Galleryのみ</b>
-                <span>
+                <b
+                  className="outingSans"
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                  }}
+                >
+                  Galleryのみ
+                </b>
+
+                <span
+                  className="outingSans"
+                  style={{
+                    display: "block",
+                    marginTop: 5,
+                    color:
+                      "rgba(255,255,255,.48)",
+                    fontSize: 10,
+                  }}
+                >
                   My Pageだけに表示
                 </span>
               </button>
             </div>
           </div>
 
-          <div className="postCard pointPreview">
-            <b>この投稿のポイント</b>
-
-            <p>
-              あなた：{missionPoints}pt
+          <div
+            className="glassCardStrong"
+            style={{
+              padding: 16,
+              marginTop: 10,
+            }}
+          >
+            <p
+              className="outingSerifEn"
+              style={{
+                margin: 0,
+                color:
+                  "rgba(255,255,255,.48)",
+                fontSize: 9,
+                letterSpacing: ".15em",
+              }}
+            >
+              MISSION POINTS
             </p>
 
+            <div
+              className="outingSerifEn"
+              style={{
+                marginTop: 7,
+                color: "#dacaff",
+                fontSize: 28,
+              }}
+            >
+              +{missionPoints} PT
+            </div>
+
             {mentions.map((person) => (
-              <p key={person.id}>
-                {person.name}：{missionPoints}pt
+              <p
+                key={person.id}
+                className="outingSans"
+                style={{
+                  margin: "7px 0 0",
+                  color:
+                    "rgba(255,255,255,.58)",
+                  fontSize: 11,
+                }}
+              >
+                {person.name}：+
+                {missionPoints} PT
               </p>
             ))}
 
-            <small>
+            <small
+              className="outingSans"
+              style={{
+                display: "block",
+                marginTop: 12,
+                color:
+                  "rgba(255,255,255,.38)",
+              }}
+            >
               初回CLEAR時のみ加点されます。
             </small>
           </div>
 
-          <div className="reviewButtons">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "1fr 1.4fr",
+              gap: 9,
+              marginTop: 14,
+            }}
+          >
             <button
               type="button"
-              className="btn outline"
+              className="uiGhostButton"
               disabled={posting}
               onClick={() =>
                 setStage("edit")
               }
+              style={{
+                justifyContent: "center",
+              }}
             >
               ← 戻る
             </button>
 
             <button
               type="button"
-              className="btn primary"
+              className="uiPrimaryButton"
               disabled={posting}
               onClick={submitPost}
+              style={{
+                justifyContent: "center",
+              }}
             >
               {posting
                 ? "投稿中..."
@@ -881,62 +1615,215 @@ export default function MissionCamera() {
         </section>
       )}
 
+      {/* =========================
+          DONE
+      ========================= */}
+
       {stage === "done" && (
-        <section className="postDone">
-          <div className="doneCheck">✓</div>
-
-          <h1>
-            {queuedOffline
-              ? "未送信として保存しました"
-              : "Mission CLEAR!"}
-          </h1>
-
-          {!queuedOffline && (
-            <div className="donePoints">
-              +{missionPoints}pt
-            </div>
-          )}
-
-          <p>
-            {queuedOffline
-              ? "通信が戻ると自動で再送します。二重投稿はされません。"
-              : `写真を${
-                  visibility === "stream"
-                    ? "StreamとGallery"
-                    : "Gallery"
-                }に保存しました。`}
-          </p>
-
-          {postedId && (
-            <small>
-              Post ID: {postedId}
-            </small>
-          )}
-
-          <Link
-            className="btn primary linkButton doneButton"
-            href="/missions"
+        <section
+          className="participantContent"
+          style={{
+            minHeight: "100dvh",
+            display: "grid",
+            placeItems: "center",
+            paddingTop: 30,
+            paddingBottom: 30,
+          }}
+        >
+          <div
+            className="glassCardStrong"
+            style={{
+              width: "100%",
+              padding: "42px 22px",
+              textAlign: "center",
+            }}
           >
-            Mission一覧へ
-          </Link>
+            <div
+              style={{
+                width: 58,
+                height: 58,
+                margin: "0 auto",
+                display: "grid",
+                placeItems: "center",
+                borderRadius: "50%",
+                border:
+                  "1px solid rgba(190,165,255,.32)",
+                background:
+                  "rgba(113,72,215,.20)",
+                color: "#dacaff",
+                fontSize: 25,
+              }}
+            >
+              ✓
+            </div>
+
+            <p
+              className="outingSerifEn"
+              style={{
+                margin: "22px 0 0",
+                color:
+                  "rgba(255,255,255,.44)",
+                fontSize: 9,
+                letterSpacing: ".20em",
+              }}
+            >
+              OUTING 2026
+            </p>
+
+            <h1
+              className="outingSerifEn"
+              style={{
+                margin: "8px 0 0",
+                color: "#fff",
+                fontSize: 29,
+                fontWeight: 500,
+                letterSpacing: ".08em",
+              }}
+            >
+              {queuedOffline
+                ? "SAVED"
+                : "MISSION CLEAR"}
+            </h1>
+
+            {!queuedOffline && (
+              <div
+                className="outingSerifEn"
+                style={{
+                  marginTop: 12,
+                  color: "#dacaff",
+                  fontSize: 34,
+                }}
+              >
+                +{missionPoints} PT
+              </div>
+            )}
+
+            <p
+              className="outingSans"
+              style={{
+                margin: "18px auto 0",
+                maxWidth: 310,
+                color:
+                  "rgba(255,255,255,.56)",
+                fontSize: 12,
+                lineHeight: 1.8,
+              }}
+            >
+              {queuedOffline
+                ? "通信が戻ると自動で再送します。二重投稿はされません。"
+                : `写真を${
+                    visibility === "stream"
+                      ? "StreamとGallery"
+                      : "Gallery"
+                  }に保存しました。`}
+            </p>
+
+            {postedId && (
+              <small
+                style={{
+                  display: "block",
+                  marginTop: 14,
+                  color:
+                    "rgba(255,255,255,.25)",
+                  fontSize: 8,
+                }}
+              >
+                Post ID: {postedId}
+              </small>
+            )}
+
+            <Link
+              href="/missions"
+              className="uiPrimaryButton"
+              style={{
+                marginTop: 24,
+                width: "100%",
+                display: "inline-flex",
+                justifyContent: "center",
+                textDecoration: "none",
+              }}
+            >
+              Mission一覧へ
+            </Link>
+          </div>
         </section>
       )}
 
+      {/* =========================
+          ERROR
+      ========================= */}
+
       {error && (
         <section
-          className="cameraError"
           role="alert"
+          style={{
+            position:
+              stage === "camera"
+                ? "fixed"
+                : "relative",
+            zIndex: 30,
+            left:
+              stage === "camera"
+                ? 16
+                : undefined,
+            right:
+              stage === "camera"
+                ? 16
+                : undefined,
+            bottom:
+              stage === "camera"
+                ? 145
+                : undefined,
+            maxWidth:
+              stage === "camera"
+                ? 488
+                : undefined,
+            margin:
+              stage === "camera"
+                ? "0 auto"
+                : "16px",
+            padding: 14,
+            borderRadius: 12,
+            background:
+              "rgba(45,12,18,.88)",
+            border:
+              "1px solid rgba(255,120,140,.22)",
+            color: "#fff",
+            backdropFilter: "blur(14px)",
+          }}
         >
-          <strong>エラー</strong>
-          <p>{error}</p>
+          <strong
+            className="outingSans"
+            style={{
+              fontSize: 12,
+            }}
+          >
+            エラー
+          </strong>
+
+          <p
+            className="outingSans"
+            style={{
+              margin: "5px 0 0",
+              fontSize: 11,
+              lineHeight: 1.6,
+              color:
+                "rgba(255,255,255,.72)",
+            }}
+          >
+            {error}
+          </p>
 
           {stage === "camera" && (
             <button
               type="button"
-              className="btn primary"
+              className="uiPrimaryButton"
               onClick={() =>
                 void startCamera(facingMode)
               }
+              style={{
+                marginTop: 10,
+              }}
             >
               もう一度試す
             </button>

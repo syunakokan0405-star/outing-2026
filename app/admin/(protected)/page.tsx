@@ -176,6 +176,12 @@ export default async function Admin() {
             </button>
           </Link>
 
+<Link href="/admin/home-backgrounds">
+  <button className="btn outline">
+    🖼️ HOME背景設定
+  </button>
+</Link>
+
           <Link href="/admin/stream">
             <button className="btn outline">
               📡 Stream投稿
