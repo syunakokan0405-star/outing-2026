@@ -1,5 +1,15 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import {
+
+  BookOpen,
+  HomeIcon,
+  Images,
+  Target,
+  UserRound,
+  ArrowRight,
+  CheckCircle2,
+} from 'lucide-react'
 import PointTop5 from '@/components/PointTop5'
 import { createClient } from '@/lib/supabase/server'
 
@@ -20,18 +30,18 @@ export default async function Home() {
 
   if (!eventId) {
     return (
-      <main className="shell grid">
-        <section className="card">
-          <h2>設定エラー</h2>
-          <p>NEXT_PUBLIC_EVENT_ID が設定されていません。</p>
-        </section>
+      <main className="participantUi">
+        <div className="participantContent">
+          <section className="glassCard" style={{ padding: 18 }}>
+            <h2>設定エラー</h2>
+            <p className="uiMuted">
+              NEXT_PUBLIC_EVENT_ID が設定されていません。
+            </p>
+          </section>
+        </div>
       </main>
     )
   }
-
-  // ---------------------------------------------------------
-  // 現在ログイン中の参加者
-  // ---------------------------------------------------------
 
   const { data: me, error: meError } = await supabase.rpc(
     'get_my_participant',
@@ -42,11 +52,13 @@ export default async function Home() {
 
   if (meError) {
     return (
-      <main className="shell grid">
-        <section className="card">
-          <h2>参加者情報を取得できませんでした</h2>
-          <p>{meError.message}</p>
-        </section>
+      <main className="participantUi">
+        <div className="participantContent">
+          <section className="glassCard" style={{ padding: 18 }}>
+            <h2>参加者情報を取得できませんでした</h2>
+            <p className="uiMuted">{meError.message}</p>
+          </section>
+        </div>
       </main>
     )
   }
@@ -56,10 +68,6 @@ export default async function Home() {
   if (!participant?.participant_id) {
     redirect('/join')
   }
-
-  // ---------------------------------------------------------
-  // 公開中のお知らせ
-  // ---------------------------------------------------------
 
   const { data: announcements, error: announcementError } =
     await supabase
@@ -79,10 +87,6 @@ export default async function Home() {
       })
       .limit(3)
 
-  // ---------------------------------------------------------
-  // 自分に割り当てられたMission
-  // ---------------------------------------------------------
-
   const { data: assignments, error: missionError } =
     await supabase
       .from('mission_assignments')
@@ -101,21 +105,15 @@ export default async function Home() {
           )
         )
       `)
-      .eq(
-        'participant_id',
-        participant.participant_id,
-      )
+      .eq('participant_id', participant.participant_id)
       .order('created_at', {
         ascending: false,
       })
 
-  // Supabaseがrelationを配列として返す場合にも対応
   const normalizedMissions: MissionRow[] =
     assignments
       ?.map((assignment: any): MissionRow | null => {
-        const mission = Array.isArray(
-          assignment.mission,
-        )
+        const mission = Array.isArray(assignment.mission)
           ? assignment.mission[0]
           : assignment.mission
 
@@ -141,9 +139,7 @@ export default async function Home() {
           difficulty: mission.difficulty,
           points: mission.points,
           dropNumber: drop.drop_number,
-          cleared: Boolean(
-            assignment.first_cleared_at,
-          ),
+          cleared: Boolean(assignment.first_cleared_at),
         }
       })
       .filter(
@@ -158,223 +154,320 @@ export default async function Home() {
   const currentMission =
     normalizedMissions[0] ?? null
 
-  // ---------------------------------------------------------
-  // HOME
-  // ---------------------------------------------------------
-
   return (
-    <main className="shell grid">
-      <div>
-        <div className="brand">OUTING 2026</div>
-        <h1>Home</h1>
-      </div>
+    <main
+      className="participantUi"
+      style={
+        {
+          '--participant-bg-image':
+            'url("/outing-bg.jpg")',
+        } as React.CSSProperties
+      }
+    >
+      <div className="participantContent">
+        <header
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            marginBottom: 24,
+          }}
+        >
+          <div>
+            <p className="uiEyebrow">
+              NIC STUDY TOUR
+            </p>
 
-      {/* 運営からのお知らせ */}
+            <h1
+              className="uiTitle"
+              style={{
+                marginTop: 7,
+              }}
+            >
+              OUTING 2026
+            </h1>
+          </div>
 
-      {!announcementError &&
-        announcements &&
-        announcements.length > 0 && (
-          <section
-            className="card"
-            style={{
-              border:
-                '1px solid rgba(139,92,246,0.35)',
-            }}
+ 
+        </header>
+
+        {!announcementError &&
+          announcements &&
+          announcements.length > 0 && (
+            <section
+              className="glassCard"
+              style={{
+                padding: 17,
+                marginBottom: 24,
+              }}
+            >
+              <p className="uiSectionTitle">
+                ANNOUNCEMENT
+              </p>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 15,
+                  marginTop: 14,
+                }}
+              >
+                {announcements.map(
+                  (announcement, index) => (
+                    <article
+                      key={announcement.id}
+                      style={{
+                        paddingBottom:
+                          index <
+                          announcements.length - 1
+                            ? 15
+                            : 0,
+                        borderBottom:
+                          index <
+                          announcements.length - 1
+                            ? '1px solid rgba(255,255,255,.08)'
+                            : 'none',
+                      }}
+                    >
+                      <h2
+                        style={{
+                          margin: 0,
+                          fontSize: 16,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {announcement.title}
+                      </h2>
+
+                      <p
+                        className="uiMuted"
+                        style={{
+                          margin: '7px 0 0',
+                          whiteSpace: 'pre-wrap',
+                          lineHeight: 1.6,
+                          fontSize: 13,
+                        }}
+                      >
+                        {announcement.body}
+                      </p>
+
+                      <small
+                        className="uiMuted"
+                        style={{
+                          display: 'block',
+                          marginTop: 9,
+                          fontSize: 10,
+                        }}
+                      >
+                        {new Date(
+                          announcement.published_at ??
+                            announcement.created_at,
+                        ).toLocaleString('ja-JP', {
+                          month: 'numeric',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </small>
+                    </article>
+                  ),
+                )}
+              </div>
+            </section>
+          )}
+
+        <section style={{ marginBottom: 24 }}>
+          <p
+            className="uiSectionTitle"
+            style={{ marginBottom: 10 }}
           >
+            TODAY&apos;S MISSION
+          </p>
+
+          {missionError ? (
             <div
-              className="muted"
-              style={{
-                marginBottom: 12,
-              }}
+              className="glassCard"
+              style={{ padding: 18 }}
             >
-              📢 運営からのお知らせ
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 16,
+                }}
+              >
+                Missionを読み込めませんでした
+              </h2>
+
+              <p className="uiMuted">
+                {missionError.message}
+              </p>
             </div>
+          ) : currentMission ? (
+            <article className="photoCard">
+              <img
+                src="/mission-default.jpg"
+                alt=""
+                className="photoCardImage"
+              />
 
-            <div
-              style={{
-                display: 'grid',
-                gap: 16,
-              }}
-            >
-              {announcements.map(
-                (announcement, index) => (
-                  <div
-                    key={announcement.id}
+              <div className="photoCardContent">
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <span
                     style={{
-                      paddingBottom:
-                        index <
-                        announcements.length - 1
-                          ? 16
-                          : 0,
-
-                      borderBottom:
-                        index <
-                        announcements.length - 1
-                          ? '1px solid rgba(255,255,255,0.08)'
-                          : 'none',
+                      fontSize: 11,
+                      fontWeight: 750,
+                      letterSpacing: '.08em',
                     }}
                   >
-                    <h2
-                      style={{
-                        marginBottom: 6,
-                      }}
-                    >
-                      {announcement.title}
-                    </h2>
+                    DROP {currentMission.dropNumber}
+                  </span>
 
-                    <p
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      {announcement.body}
-                    </p>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: '#d8c9ff',
+                    }}
+                  >
+                    +{currentMission.points} PT
+                  </span>
+                </div>
 
-                    <small className="muted">
-                      {new Date(
-                        announcement.published_at ??
-                          announcement.created_at,
-                      ).toLocaleString('ja-JP', {
-                        month: 'numeric',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </small>
-                  </div>
-                ),
-              )}
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 24,
+                    lineHeight: 1.3,
+                    letterSpacing: '-.025em',
+                  }}
+                >
+                  {currentMission.title}
+                </h2>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginTop: 10,
+                    color: 'rgba(255,255,255,.72)',
+                    fontSize: 12,
+                  }}
+                >
+                  <span>
+                    {currentMission.difficulty}
+                  </span>
+
+                  {currentMission.cleared && (
+                    <>
+                      <span>・</span>
+
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          color: '#8ee6b5',
+                          fontWeight: 750,
+                        }}
+                      >
+                        <CheckCircle2 size={14} />
+                        CLEAR
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                <Link
+                  href="/missions"
+                  className="uiPrimaryButton"
+                  style={{
+                    marginTop: 18,
+                    alignSelf: 'flex-start',
+                  }}
+                >
+                  Missionを見る
+                  <ArrowRight size={17} />
+                </Link>
+              </div>
+            </article>
+          ) : (
+            <div
+              className="glassCard"
+              style={{
+                padding: 18,
+              }}
+            >
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 17,
+                }}
+              >
+                現在公開中のMissionはありません
+              </h2>
+
+              <p
+                className="uiMuted"
+                style={{
+                  marginBottom: 0,
+                }}
+              >
+                新しいDropが公開されるとここに表示されます。
+              </p>
             </div>
-          </section>
-        )}
-
-      {/* お知らせ取得エラー */}
-
-      {announcementError && (
-        <section className="card">
-          <p className="muted">
-            お知らせを読み込めませんでした。
-          </p>
+          )}
         </section>
-      )}
 
-      {/* Mission */}
+        <section style={{ marginBottom: 24 }}>
+          <p
+            className="uiSectionTitle"
+            style={{ marginBottom: 10 }}
+          >
+            TOP PLAYERS
+          </p>
 
-      <section className="card">
-        <div className="muted">
-          CURRENT MISSION
-        </div>
+          <div className="glassCardStrong">
+            <PointTop5 />
+          </div>
+        </section>
+      </div>
 
-        {missionError ? (
-          <>
-            <h2>
-              Missionを読み込めませんでした
-            </h2>
-
-            <p className="muted">
-              {missionError.message}
-            </p>
-          </>
-        ) : currentMission ? (
-          <>
-            <p className="muted">
-              Drop #{currentMission.dropNumber}
-              {' ・ '}
-              {currentMission.difficulty}
-              {' ・ '}
-              +{currentMission.points}pt
-            </p>
-
-            <h2>{currentMission.title}</h2>
-
-            {currentMission.cleared ? (
-              <p>
-                <b>CLEAR ✓</b>
-              </p>
-            ) : (
-              <p className="muted">
-                まだCLEARしていません。
-              </p>
-            )}
-
-            <Link
-              className="btn primary linkButton"
-              href="/missions"
-            >
-              Missionを見る
-            </Link>
-          </>
-        ) : (
-          <>
-            <h2>
-              現在Missionはありません
-            </h2>
-
-            <p className="muted">
-              新しいDropが公開されると
-              ここに表示されます。
-            </p>
-
-            <Link
-              className="btn primary linkButton"
-              href="/missions"
-            >
-              Missionを見る
-            </Link>
-          </>
-        )}
-      </section>
-
-      {/* Stream */}
-
-      <section className="card">
-        <div className="muted">
-          STREAM
-        </div>
-
-        <h2>最新情報をチェック</h2>
-
-        <p className="muted">
-          参加者の写真や運営からの投稿を確認できます。
-        </p>
-
-        <Link
-          className="btn linkButton"
-          href="/stream"
-        >
-          Streamを見る
-        </Link>
-      </section>
-
-      {/* Ranking */}
-
-      <PointTop5 />
-
-      {/* Bottom Navigation */}
-
-      <nav className="nav">
+      <nav className="outingNav">
         <Link
           className="active"
           href="/"
         >
-          HOME
+          <HomeIcon />
+          <span>Home</span>
         </Link>
 
         <Link href="/guide">
-          GUIDE
+          <BookOpen />
+          <span>Guide</span>
         </Link>
 
         <Link href="/missions">
-          MISSION
+          <Target />
+          <span>Mission</span>
         </Link>
 
         <Link href="/stream">
-          STREAM
+          <Images />
+          <span>Stream</span>
         </Link>
 
         <Link href="/me">
-          MY
+          <UserRound />
+          <span>My</span>
         </Link>
       </nav>
     </main>

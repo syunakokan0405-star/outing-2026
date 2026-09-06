@@ -2,6 +2,14 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Download,
+  Heart,
+  Images,
+  Pencil,
+  Trash2,
+  UsersRound,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 type Mode = 'stream' | 'gallery'
@@ -15,7 +23,10 @@ type PostRow = {
   comment: string | null
   visibility: 'stream' | 'gallery'
   created_at: string
-  participants?: { name: string } | null
+  participants?: {
+    name: string
+    avatar_path: string | null
+  } | null
   missions?: {
     title: string
     points: number
@@ -24,7 +35,10 @@ type PostRow = {
   reactions?: { participant_id: string }[]
   post_mentions?: {
     participant_id: string
-    participants?: { name: string } | null
+    participants?: {
+    name: string
+    avatar_path: string | null
+  } | null
   }[]
 }
 
@@ -41,6 +55,7 @@ type AdminStreamRow = {
 type UserFeedItem = PostRow & {
   kind: 'participant'
   signedUrl: string
+  avatarUrl: string
   heartCount: number
   mine: boolean
 }
@@ -139,7 +154,7 @@ export default function LivePosts({
         comment,
         visibility,
         created_at,
-        participants!posts_participant_id_fkey(name),
+        participants!posts_participant_id_fkey(name,avatar_path),
         missions(title,points,difficulty),
         reactions(participant_id),
         post_mentions(
@@ -211,6 +226,9 @@ export default function LivePosts({
 
     const paths = [
       ...rows.map((row) => row.image_path),
+      ...rows
+        .map((row) => row.participants?.avatar_path ?? '')
+        .filter(Boolean),
       ...adminRows
         .map((row) => row.image_path ?? '')
         .filter(Boolean),
@@ -223,6 +241,9 @@ export default function LivePosts({
         ...post,
         kind: 'participant',
         signedUrl: urls.get(post.image_path) ?? '',
+        avatarUrl: post.participants?.avatar_path
+          ? (urls.get(post.participants.avatar_path) ?? '')
+          : '',
         heartCount: post.reactions?.length ?? 0,
         mine: post.participant_id === participant.id,
       }))
@@ -390,27 +411,57 @@ export default function LivePosts({
 
     void load()
   }
-
   if (loading) {
     return (
-      <section className="card">
-        <b>写真を読み込み中...</b>
+      <section
+        className="glassCardStrong"
+        style={{
+          padding: '28px 20px',
+          textAlign: 'center',
+        }}
+      >
+        <p
+          className="uiMuted"
+          style={{ margin: 0 }}
+        >
+          写真を読み込み中...
+        </p>
       </section>
     )
   }
 
   if (error) {
     return (
-      <section className="card">
-        <b>表示できませんでした</b>
+      <section
+        className="glassCardStrong"
+        style={{
+          padding: 20,
+        }}
+      >
+        <p className="uiEyebrow">
+          ERROR
+        </p>
 
-        <p className="muted">
+        <h2
+          style={{
+            margin: '6px 0 8px',
+            fontSize: 17,
+          }}
+        >
+          表示できませんでした
+        </h2>
+
+        <p className="uiMuted">
           {error}
         </p>
 
         <button
-          className="btn outline"
+          type="button"
+          className="uiGhostButton"
           onClick={() => void load()}
+          style={{
+            marginTop: 10,
+          }}
         >
           再読み込み
         </button>
@@ -420,14 +471,36 @@ export default function LivePosts({
 
   if (!items.length) {
     return (
-      <section className="card">
-        <b>
+      <section
+        className="glassCardStrong"
+        style={{
+          padding: '32px 20px',
+          textAlign: 'center',
+        }}
+      >
+        <Images
+          size={27}
+          strokeWidth={1.5}
+          style={{
+            opacity: 0.5,
+          }}
+        />
+
+        <h2
+          style={{
+            margin: '14px 0 6px',
+            fontSize: 18,
+          }}
+        >
           {mode === 'stream'
             ? 'Streamはまだ空です'
             : 'Galleryはまだ空です'}
-        </b>
+        </h2>
 
-        <p className="muted">
+        <p
+          className="uiMuted"
+          style={{ margin: 0 }}
+        >
           最初の写真を投稿してみよう。
         </p>
       </section>
@@ -436,55 +509,168 @@ export default function LivePosts({
 
   return (
     <div
-      className={
+      style={
         mode === 'gallery'
-          ? 'galleryGrid'
-          : 'feedGrid'
+          ? {
+              display: 'grid',
+              gridTemplateColumns:
+                'repeat(2, minmax(0, 1fr))',
+              gap: 8,
+            }
+          : {
+              display: 'grid',
+              gap: 24,
+            }
       }
     >
       {items.map((item) => {
+        /*
+         * 運営投稿
+         */
         if (item.kind === 'admin') {
           return (
             <article
               key={`admin-${item.id}`}
-              className="adminStreamCard"
+              className="glassCardStrong"
+              style={{
+                overflow: 'hidden',
+              }}
             >
               {item.signedUrl && (
-                <img
-                  className="feedPhoto"
-                  src={item.signedUrl}
-                  alt="運営からの投稿写真"
-                />
+                <div
+                  style={{
+                    position: 'relative',
+                    aspectRatio: '4 / 5',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <img
+                    src={item.signedUrl}
+                    alt="運営からの投稿写真"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background:
+                        'linear-gradient(to bottom, transparent 45%, rgba(0,0,0,.72) 100%)',
+                    }}
+                  />
+
+                  <span
+                    style={{
+                      position: 'absolute',
+                      left: 14,
+                      bottom: 14,
+                      padding: '6px 9px',
+                      borderRadius: 999,
+                      background:
+                        'rgba(139,92,246,.82)',
+                      color: '#fff',
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: '.08em',
+                      backdropFilter:
+                        'blur(10px)',
+                    }}
+                  >
+                    OUTING STAFF
+                  </span>
+                </div>
               )}
 
-              <div className="adminStreamBody">
-                <span className="adminStreamBadge">
-                  OUTING STAFF
-                </span>
+              <div
+                style={{
+                  padding: 16,
+                }}
+              >
+                {!item.signedUrl && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      marginBottom: 10,
+                      padding: '6px 9px',
+                      borderRadius: 999,
+                      background:
+                        'rgba(139,92,246,.18)',
+                      color: '#c4b5fd',
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: '.08em',
+                    }}
+                  >
+                    OUTING STAFF
+                  </span>
+                )}
 
-                <h2>{item.title}</h2>
+                <h2
+                  style={{
+                    margin: 0,
+                    color: '#fff',
+                    fontSize: 19,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {item.title}
+                </h2>
 
                 {item.body && (
-                  <p className="feedComment">
+                  <p
+                    style={{
+                      margin: '10px 0 0',
+                      color:
+                        'rgba(255,255,255,.68)',
+                      fontSize: 13,
+                      lineHeight: 1.75,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
                     {item.body}
                   </p>
                 )}
 
-                <div className="feedMeta">
-                  <b>
-                    {item.admin_users?.display_name ??
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent:
+                      'space-between',
+                    gap: 12,
+                    marginTop: 14,
+                    color:
+                      'rgba(255,255,255,.42)',
+                    fontSize: 11,
+                  }}
+                >
+                  <strong
+                    style={{
+                      color:
+                        'rgba(255,255,255,.72)',
+                    }}
+                  >
+                    {item.admin_users
+                      ?.display_name ??
                       '運営'}
-                  </b>
+                  </strong>
 
                   <span>
                     {new Date(
                       item.created_at,
-                    ).toLocaleString('ja-JP', {
-                      month: 'numeric',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    ).toLocaleString(
+                      'ja-JP',
+                      {
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      },
+                    )}
                   </span>
                 </div>
               </div>
@@ -492,96 +678,350 @@ export default function LivePosts({
           )
         }
 
+        /*
+         * 参加者投稿
+         */
         const post = item
 
+        /*
+         * Galleryでは写真を主役にした
+         * 2列グリッドだけ表示
+         */
+        if (mode === 'gallery') {
+          return (
+            <article
+              key={post.id}
+              style={{
+                position: 'relative',
+                aspectRatio: '1 / 1',
+                overflow: 'hidden',
+                borderRadius: 16,
+                background:
+                  'rgba(255,255,255,.05)',
+                border:
+                  '1px solid rgba(255,255,255,.08)',
+              }}
+            >
+              {post.signedUrl ? (
+                <img
+                  src={post.signedUrl}
+                  alt={`${
+                    post.participants
+                      ?.name ??
+                    '参加者'
+                  }の投稿写真`}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'grid',
+                    placeItems: 'center',
+                    padding: 12,
+                    color:
+                      'rgba(255,255,255,.4)',
+                    fontSize: 11,
+                    textAlign: 'center',
+                  }}
+                >
+                  写真を表示できませんでした
+                </div>
+              )}
+
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background:
+                    'linear-gradient(to bottom, transparent 55%, rgba(0,0,0,.65) 100%)',
+                  pointerEvents: 'none',
+                }}
+              />
+
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 10,
+                  right: 10,
+                  bottom: 9,
+                  display: 'flex',
+                  justifyContent:
+                    'space-between',
+                  alignItems: 'center',
+                  gap: 8,
+                  color: '#fff',
+                  fontSize: 10,
+                  pointerEvents: 'none',
+                }}
+              >
+                <strong
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow:
+                      'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {post.participants
+                    ?.name ??
+                    'Participant'}
+                </strong>
+
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Heart
+                    size={11}
+                    strokeWidth={2}
+                  />
+                  {post.heartCount}
+                </span>
+              </div>
+            </article>
+          )
+        }
+
+        /*
+         * Stream
+         */
         return (
           <article
             key={post.id}
-            className={
-              mode === 'gallery'
-                ? 'galleryCard'
-                : 'feedCard'
-            }
+            className="glassCardStrong"
+            style={{
+              overflow: 'hidden',
+            }}
           >
-            <div className="feedPhotoWrap">
+            {/* 投稿者 */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent:
+                  'space-between',
+                gap: 12,
+                padding: '13px 14px',
+              }}
+            >
+              <Link
+                href={
+                  post.mine
+                    ? '/me'
+                    : `/profile/${post.participant_id}`
+                }
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  minWidth: 0,
+                  color: '#fff',
+                  textDecoration: 'none',
+                }}
+              >
+                <span
+                  className="uiAvatar"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    flexShrink: 0,
+                    display: 'grid',
+                    placeItems: 'center',
+                    overflow: 'hidden',
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  {post.avatarUrl ? (
+                    <img
+                      src={post.avatarUrl}
+                      alt={`${post.participants?.name ?? '参加者'}のプロフィール画像`}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block',
+                      }}
+                    />
+                  ) : (
+                    (post.participants?.name ?? 'P').slice(0, 1)
+                  )}
+                </span>
+
+                <span
+                  style={{
+                    minWidth: 0,
+                  }}
+                >
+                  <strong
+                    style={{
+                      display: 'block',
+                      overflow: 'hidden',
+                      textOverflow:
+                        'ellipsis',
+                      whiteSpace: 'nowrap',
+                      fontSize: 13,
+                    }}
+                  >
+                    {post.participants
+                      ?.name ??
+                      'Participant'}
+                  </strong>
+
+                  <span
+                    style={{
+                      display: 'block',
+                      marginTop: 2,
+                      color:
+                        'rgba(255,255,255,.42)',
+                      fontSize: 10,
+                    }}
+                  >
+                    {new Date(
+                      post.created_at,
+                    ).toLocaleString(
+                      'ja-JP',
+                      {
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      },
+                    )}
+                  </span>
+                </span>
+              </Link>
+
+              {post.mine && (
+                <span
+                  style={{
+                    color:
+                      'rgba(255,255,255,.38)',
+                    fontSize: 10,
+                    letterSpacing:
+                      '.08em',
+                  }}
+                >
+                  YOUR POST
+                </span>
+              )}
+            </div>
+
+            {/* 写真 */}
+            <div
+              style={{
+                position: 'relative',
+                width: '100%',
+                background: '#090a0d',
+              }}
+            >
               {post.signedUrl ? (
                 <img
-                  className="feedPhoto"
                   src={post.signedUrl}
                   alt={`${
-                    post.participants?.name ??
+                    post.participants
+                      ?.name ??
                     '参加者'
                   }の投稿写真`}
+                  style={{
+                    width: '100%',
+                    maxHeight: 620,
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
                 />
               ) : (
-                <div className="photoFallback">
+                <div
+                  style={{
+                    minHeight: 360,
+                    display: 'grid',
+                    placeItems: 'center',
+                    color:
+                      'rgba(255,255,255,.4)',
+                    fontSize: 12,
+                  }}
+                >
                   写真を表示できませんでした
                 </div>
               )}
 
               {post.missions && (
-                <div className="feedMission">
-                  <span>
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 12,
+                    right: 12,
+                    bottom: 12,
+                    display: 'flex',
+                    justifyContent:
+                      'space-between',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '9px 11px',
+                    borderRadius: 13,
+                    background:
+                      'rgba(10,10,14,.68)',
+                    border:
+                      '1px solid rgba(255,255,255,.10)',
+                    backdropFilter:
+                      'blur(12px)',
+                  }}
+                >
+                  <span
+                    style={{
+                      overflow: 'hidden',
+                      textOverflow:
+                        'ellipsis',
+                      whiteSpace: 'nowrap',
+                      color: '#fff',
+                      fontSize: 11,
+                      fontWeight: 650,
+                    }}
+                  >
                     {post.missions.title}
                   </span>
 
-                  <b>
-                    +{post.missions.points}pt
-                  </b>
+                  <strong
+                    style={{
+                      flexShrink: 0,
+                      color: '#c4b5fd',
+                      fontSize: 11,
+                    }}
+                  >
+                    +{post.missions.points} PT
+                  </strong>
                 </div>
               )}
             </div>
 
-            <div className="feedBody">
-              <div className="feedMeta">
-                <Link
-                  className="profileLink"
-                  href={
-                    post.mine
-                      ? '/me'
-                      : `/profile/${post.participant_id}`
-                  }
-                >
-                  <b>
-                    {post.participants?.name ??
-                      'Participant'}
-                  </b>
-                </Link>
-
-                <span>
-                  {new Date(
-                    post.created_at,
-                  ).toLocaleString('ja-JP', {
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-
-              {post.comment && (
-                <p className="feedComment">
-                  {post.comment}
-                </p>
-              )}
-
-              {!!post.post_mentions?.length && (
-                <p className="mentionsLine">
-                  with{' '}
-                  {post.post_mentions
-                    .map(
-                      (mention) =>
-                        mention.participants?.name,
-                    )
-                    .filter(Boolean)
-                    .join(' ・ ')}
-                </p>
-              )}
-
-              <div className="feedActions">
+            {/* 投稿情報 */}
+            <div
+              style={{
+                padding:
+                  '13px 14px 15px',
+              }}
+            >
+              {/* アクション */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
                 <button
-                  className="heartButton"
+                  type="button"
                   disabled={post.mine}
                   onClick={() =>
                     void toggleHeart(post)
@@ -591,49 +1031,204 @@ export default function LivePosts({
                       ? '自分の投稿にはハートできません'
                       : 'ハート'
                   }
+                  style={{
+                    border: 0,
+                    background:
+                      'transparent',
+                    color: post.mine
+                      ? 'rgba(255,255,255,.34)'
+                      : '#fff',
+                    padding: '6px 5px',
+                    display:
+                      'inline-flex',
+                    alignItems:
+                      'center',
+                    gap: 6,
+                    cursor: post.mine
+                      ? 'default'
+                      : 'pointer',
+                    fontSize: 13,
+                    fontWeight: 650,
+                  }}
                 >
-                  ♡ {post.heartCount}
+                  <Heart
+                    size={21}
+                    strokeWidth={1.8}
+                  />
+                  {post.heartCount}
                 </button>
 
-                <span className="visibilityBadge">
-                  {post.visibility === 'stream'
-                    ? 'Stream'
-                    : 'Gallery'}
-                </span>
-
                 <button
-                  className="downloadLink"
                   type="button"
                   onClick={() =>
                     void downloadPhoto(post)
                   }
+                  title="写真を保存"
+                  style={{
+                    border: 0,
+                    background:
+                      'transparent',
+                    color:
+                      'rgba(255,255,255,.76)',
+                    padding: 6,
+                    display: 'grid',
+                    placeItems:
+                      'center',
+                    cursor: 'pointer',
+                  }}
                 >
-                  保存
+                  <Download
+                    size={20}
+                    strokeWidth={1.7}
+                  />
                 </button>
 
-                {post.mine && (
-                  <div className="ownerActions">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void editComment(post)
-                      }
-                    >
-                      コメント編集
-                    </button>
-
-                    <button
-                      type="button"
-                      className="deleteLink"
-                      onClick={() =>
-                        void deletePost(post)
-                      }
-                    >
-                      削除
-                    </button>
-                  </div>
-                )}
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    padding: '5px 8px',
+                    borderRadius: 999,
+                    background:
+                      'rgba(255,255,255,.06)',
+                    border:
+                      '1px solid rgba(255,255,255,.07)',
+                    color:
+                      'rgba(255,255,255,.46)',
+                    fontSize: 9,
+                    textTransform:
+                      'uppercase',
+                    letterSpacing:
+                      '.08em',
+                  }}
+                >
+                  {post.visibility}
+                </span>
               </div>
+
+              {/* コメント */}
+              {post.comment && (
+                <p
+                  style={{
+                    margin: '8px 4px 0',
+                    color:
+                      'rgba(255,255,255,.82)',
+                    fontSize: 13,
+                    lineHeight: 1.65,
+                  }}
+                >
+                  {post.comment}
+                </p>
+              )}
+
+              {/* メンション */}
+              {!!post.post_mentions
+                ?.length && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems:
+                      'flex-start',
+                    gap: 6,
+                    margin: '9px 4px 0',
+                    color:
+                      'rgba(255,255,255,.48)',
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <UsersRound
+                    size={14}
+                    strokeWidth={1.7}
+                    style={{
+                      flexShrink: 0,
+                      marginTop: 1,
+                    }}
+                  />
+
+                  <span>
+                    with{' '}
+                    {post.post_mentions
+                      .map(
+                        (mention) =>
+                          mention
+                            .participants
+                            ?.name,
+                      )
+                      .filter(Boolean)
+                      .join(' ・ ')}
+                  </span>
+                </div>
+              )}
+
+              {/* 自分の投稿操作 */}
+              {post.mine && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    marginTop: 13,
+                    paddingTop: 12,
+                    borderTop:
+                      '1px solid rgba(255,255,255,.06)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void editComment(post)
+                    }
+                    style={{
+                      border: 0,
+                      background:
+                        'transparent',
+                      color:
+                        'rgba(255,255,255,.55)',
+                      padding: 4,
+                      display:
+                        'inline-flex',
+                      alignItems:
+                        'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                      fontSize: 10,
+                    }}
+                  >
+                    <Pencil
+                      size={13}
+                      strokeWidth={1.7}
+                    />
+                    コメント編集
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void deletePost(post)
+                    }
+                    style={{
+                      border: 0,
+                      background:
+                        'transparent',
+                      color:
+                        'rgba(255,130,130,.72)',
+                      padding: 4,
+                      display:
+                        'inline-flex',
+                      alignItems:
+                        'center',
+                      gap: 5,
+                      cursor: 'pointer',
+                      fontSize: 10,
+                    }}
+                  >
+                    <Trash2
+                      size={13}
+                      strokeWidth={1.7}
+                    />
+                    削除
+                  </button>
+                </div>
+              )}
             </div>
           </article>
         )
