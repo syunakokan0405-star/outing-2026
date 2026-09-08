@@ -411,26 +411,41 @@ export default function Me() {
       }
     >
       <div className="participantContent">
-        {/* HEADER */}
-        <header
-          style={{
-            paddingTop: 18,
-            marginBottom: 24,
-          }}
-        >
-          <p className="uiEyebrow">
-            OUTING 2026
-          </p>
+        
+{/* HEADER */}
+<header
+  style={{
+    paddingTop: 18,
+    marginBottom: 24,
+  }}
+>
+  <p
+    className="outingSerifEn"
+    style={{
+      margin: 0,
+      color: 'rgba(255,255,255,.58)',
+      fontSize: 11,
+      fontWeight: 500,
+      letterSpacing: '.18em',
+    }}
+  >
+    OUTING 2026
+  </p>
 
-          <h1
-            className="uiTitle"
-            style={{
-              marginTop: 6,
-            }}
-          >
-            My Page
-          </h1>
-        </header>
+  <h1
+    className="outingSerifEn"
+    style={{
+      margin: '7px 0 0',
+      color: '#fff',
+      fontSize: 34,
+      fontWeight: 500,
+      lineHeight: 1,
+      letterSpacing: '.14em',
+    }}
+  >
+    MY PAGE
+  </h1>
+</header>
 
         {/* PROFILE */}
         <section
@@ -516,45 +531,50 @@ export default function Me() {
               }}
             />
 
-            <div
-              style={{
-                minWidth: 0,
-              }}
-            >
-              <p
-                className="uiEyebrow"
-                style={{
-                  marginBottom: 5,
-                }}
-              >
-                PARTICIPANT
-              </p>
+           <div
+  style={{
+    minWidth: 0,
+  }}
+>
+  <p
+    className="outingSerifEn"
+    style={{
+      margin: '0 0 5px',
+      color: 'rgba(255,255,255,.48)',
+      fontSize: 10,
+      fontWeight: 500,
+      letterSpacing: '.16em',
+    }}
+  >
+    PARTICIPANT
+  </p>
 
-              <h2
-                style={{
-                  margin: 0,
-                  color: '#fff',
-                  fontSize: 22,
-                  lineHeight: 1.25,
-                  letterSpacing:
-                    '-.025em',
-                }}
-              >
-                {name}
-              </h2>
+  <h2
+    className="outingSerifJa"
+    style={{
+      margin: 0,
+      color: '#fff',
+      fontSize: 22,
+      lineHeight: 1.35,
+      fontWeight: 500,
+      letterSpacing: '.04em',
+    }}
+  >
+    {name}
+  </h2>
 
-              <p
-                style={{
-                  margin: '5px 0 0',
-                  color:
-                    'rgba(255,255,255,.38)',
-                  fontSize: 10,
-                }}
-              >
-                写真をタップして変更
-              </p>
-            </div>
-          </div>
+  <p
+    className="outingSans"
+    style={{
+      margin: '5px 0 0',
+      color: 'rgba(255,255,255,.38)',
+      fontSize: 10,
+    }}
+  >
+    写真をタップして変更
+  </p>
+</div>
+</div>
 
           {/* STATS */}
           <div
@@ -759,6 +779,7 @@ export default function Me() {
             paddingBottom: 120,
           }}
         >
+
           <div
             style={{
               display: 'flex',
@@ -769,18 +790,31 @@ export default function Me() {
             }}
           >
             <div>
-              <p className="uiEyebrow">
+              <p
+                className="outingSerifEn"
+                style={{
+                  margin: 0,
+                  color: 'rgba(255,255,255,.48)',
+                  fontSize: 10,
+                  fontWeight: 500,
+                  letterSpacing: '.16em',
+                }}
+              >
                 YOUR MOMENTS
               </p>
 
               <h2
+                className="outingSerifEn"
                 style={{
-                  margin: '4px 0 0',
+                  margin: '5px 0 0',
                   color: '#fff',
-                  fontSize: 21,
+                  fontSize: 24,
+                  fontWeight: 500,
+                  lineHeight: 1,
+                  letterSpacing: '.08em',
                 }}
               >
-                My Gallery
+                MY GALLERY
               </h2>
             </div>
 

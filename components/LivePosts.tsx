@@ -507,10 +507,12 @@ export default function LivePosts({
     )
   }
 
-  return (
+ return (
     <div
+      className="outingSans"
       style={
         mode === 'gallery'
+
           ? {
               display: 'grid',
               gridTemplateColumns:
@@ -979,7 +981,8 @@ export default function LivePosts({
                   }}
                 >
                   <span
-                    style={{
+                className="outingSerifJa"
+                style={{
                       overflow: 'hidden',
                       textOverflow:
                         'ellipsis',

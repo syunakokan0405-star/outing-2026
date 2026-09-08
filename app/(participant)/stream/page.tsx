@@ -6,6 +6,7 @@ import {
   Target,
   UserRound,
 } from 'lucide-react'
+
 import LivePosts from '@/components/LivePosts'
 
 export default function Stream() {
@@ -20,38 +21,68 @@ export default function Stream() {
       }
     >
       <div className="participantContent">
+
+        {/* =========================
+            HEADER
+        ========================= */}
+
         <header
           style={{
-            paddingTop: 18,
+            paddingTop: 24,
             marginBottom: 26,
           }}
         >
-          <p className="uiEyebrow">
+          <p
+            className="outingSerifEn"
+            style={{
+              margin: 0,
+              color:
+                'rgba(255,255,255,.58)',
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: '.18em',
+            }}
+          >
             OUTING 2026
           </p>
 
           <h1
-            className="uiTitle"
+            className="outingSerifEn"
             style={{
-              marginTop: 6,
+              margin: '7px 0 0',
+              color: '#fff',
+              fontSize: 34,
+              fontWeight: 500,
+              lineHeight: 1,
+              letterSpacing: '.14em',
             }}
           >
-            Stream
+            STREAM
           </h1>
 
           <p
-            className="uiMuted"
+            className="outingSerifJa"
             style={{
-              marginTop: 8,
+              margin: '11px 0 0',
               maxWidth: 350,
+              color:
+                'rgba(255,255,255,.58)',
+              fontSize: 13,
+              fontWeight: 400,
+              lineHeight: 1.7,
+              letterSpacing: '.06em',
             }}
           >
-            みんなの瞬間を、
-            リアルタイムで。
+            みんなの瞬間を、リアルタイムで。
           </p>
         </header>
 
+        {/* =========================
+            POSTS
+        ========================= */}
+
         <section
+          className="outingSans"
           style={{
             paddingBottom: 120,
           }}
@@ -59,6 +90,10 @@ export default function Stream() {
           <LivePosts mode="stream" />
         </section>
       </div>
+
+      {/* =========================
+          BOTTOM NAV
+      ========================= */}
 
       <nav className="outingNav">
         <Link href="/">
