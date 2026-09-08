@@ -1,4 +1,4 @@
-import Link from 'next/link'
+﻿import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import {
   BookOpen,
@@ -49,11 +49,11 @@ export default async function Missions({
             <p className="uiEyebrow">ERROR</p>
 
             <h1 className="uiTitle">
-              設定エラー
+              髫ｪ・ｭ陞ｳ螢ｹ縺顔ｹ晢ｽｩ郢晢ｽｼ
             </h1>
 
             <p className="uiMuted">
-              NEXT_PUBLIC_EVENT_ID が設定されていません。
+              NEXT_PUBLIC_EVENT_ID 邵ｺ迹夲ｽｨ・ｭ陞ｳ螢ｹ・・ｹｧ蠕娯ｻ邵ｺ繝ｻ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ
             </p>
           </section>
         </div>
@@ -92,7 +92,7 @@ export default async function Missions({
                 margin: '6px 0 8px',
               }}
             >
-              参加者情報を取得できませんでした
+              陷ｿ繧・・髢繝ｻ繝･陜｣・ｱ郢ｧ雋槫徐陟募干縲堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・
             </h2>
 
             <p className="uiMuted">
@@ -125,6 +125,7 @@ export default async function Missions({
         difficulty,
         points,
         required_mentions,
+        image_path,
         drop:mission_drops (
           event_id,
           status,
@@ -163,7 +164,7 @@ export default async function Missions({
                 margin: '6px 0 8px',
               }}
             >
-              Missionを取得できませんでした
+              Mission郢ｧ雋槫徐陟募干縲堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・
             </h2>
 
             <p className="uiMuted">
@@ -211,19 +212,49 @@ export default async function Missions({
 
         requiredMentions:
           assignment.mission.required_mentions,
+
+        imagePath:
+          assignment.mission.image_path,
       })) ?? []
- 
+
+  const missionsWithImages =
+    await Promise.all(
+      missions.map(async (mission) => {
+        if (!mission.imagePath) {
+          return {
+            ...mission,
+            imageUrl: '/mission-default.jpg',
+          }
+        }
+
+        const { data: signedImage } =
+          await supabase.storage
+            .from('outing-photos')
+            .createSignedUrl(
+              mission.imagePath,
+              60 * 60,
+            )
+
+        return {
+          ...mission,
+          imageUrl:
+            signedImage?.signedUrl ??
+            '/mission-default.jpg',
+        }
+      }),
+    )
+
  const visibleMissions =
     activeFilter === 'clear'
-      ? missions.filter(
+      ? missionsWithImages.filter(
           (mission) => mission.cleared,
         )
       : activeFilter === 'unclear'
-        ? missions.filter(
+        ? missionsWithImages.filter(
             (mission) => !mission.cleared,
           )
-        : missions
-  
+        : missionsWithImages
+
 return (
     <main
       className="participantUi"
@@ -259,7 +290,7 @@ return (
             OUTING 2026
           </p>
 
-         
+
                    <h1
             className="outingSerifEn"
             style={{
@@ -378,7 +409,7 @@ return (
                 fontSize: 18,
               }}
             >
-              現在Missionはありません
+              霑ｴ・ｾ陜ｨ・ｨMission邵ｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ・
             </h2>
 
             <p
@@ -390,8 +421,8 @@ return (
                 fontSize: 12,
               }}
             >
-              新しいDropが公開されると
-              ここに表示されます。
+              隴・ｽｰ邵ｺ蜉ｱ・曠rop邵ｺ謔溘・鬮｢荵晢ｼ・ｹｧ蠕鯉ｽ狗ｸｺ・ｨ
+              邵ｺ阮呻ｼ・ｸｺ・ｫ髯ｦ・ｨ驕会ｽｺ邵ｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶ繝ｻ
             </p>
           </section>
         )}
@@ -409,7 +440,7 @@ return (
         >
           {visibleMissions.map(
             (mission) => {
-     
+
         const params =
   new URLSearchParams({
     title: mission.title,
@@ -457,7 +488,7 @@ return (
                     {/* PHOTO */}
 
                     <img
-                      src="/mission-default.jpg"
+                      src={mission.imageUrl}
                       alt=""
                       style={{
                         position:
@@ -623,12 +654,12 @@ return (
                           <span
                             className="outingSans"
                           >
-                            メンション任意
+                            郢晢ｽ｡郢晢ｽｳ郢ｧ・ｷ郢晢ｽｧ郢晢ｽｳ闔会ｽｻ隲｢繝ｻ
                           </span>
 
                           {mission.difficulty && (
                             <>
-                              <span>•</span>
+                              <span>遯ｶ・｢</span>
 
                               <span
                                 className="outingSans"
