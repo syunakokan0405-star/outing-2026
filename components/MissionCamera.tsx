@@ -44,6 +44,7 @@ export default function MissionCamera() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
 
   const [missionTitle, setMissionTitle] =
@@ -277,6 +278,117 @@ if (drop) {
     } catch {
       setError(
         "この端末ではフラッシュを切り替えられませんでした。",
+      );
+    }
+  }
+
+  async function chooseLibraryPhoto(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("画像ファイルを選択してください。");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () =>
+          reject(new Error("写真を読み込めませんでした。"));
+        image.src = objectUrl;
+      });
+
+      const sourceWidth =
+        image.naturalWidth || image.width;
+      const sourceHeight =
+        image.naturalHeight || image.height;
+
+      const scale = Math.min(
+        1,
+        MAX_SIDE / Math.max(sourceWidth, sourceHeight),
+      );
+
+      const targetWidth = Math.round(
+        sourceWidth * scale,
+      );
+      const targetHeight = Math.round(
+        sourceHeight * scale,
+      );
+
+      const canvas = canvasRef.current;
+
+      if (!canvas) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error("写真を処理できませんでした。");
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+
+      const ctx = canvas.getContext("2d", {
+        alpha: false,
+      });
+
+      if (!ctx) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error("写真を処理できませんでした。");
+      }
+
+      ctx.drawImage(
+        image,
+        0,
+        0,
+        targetWidth,
+        targetHeight,
+      );
+
+      const blob = await new Promise<Blob | null>(
+        (resolve) =>
+          canvas.toBlob(
+            resolve,
+            "image/webp",
+            WEBP_QUALITY,
+          ),
+      );
+
+      URL.revokeObjectURL(objectUrl);
+
+      if (!blob) {
+        throw new Error("写真の変換に失敗しました。");
+      }
+
+      const previewUrl = URL.createObjectURL(blob);
+
+      setCapture((previous) => {
+        if (previous?.previewUrl) {
+          URL.revokeObjectURL(previous.previewUrl);
+        }
+
+        return {
+          blob,
+          previewUrl,
+          width: targetWidth,
+          height: targetHeight,
+          compressedBytes: blob.size,
+        };
+      });
+
+      stopCamera();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "写真を読み込めませんでした。",
       );
     }
   }
@@ -834,6 +946,14 @@ if (drop) {
             </div>
           )}
 
+          <input
+            ref={libraryInputRef}
+            type="file"
+            accept="image/*"
+            onChange={chooseLibraryPhoto}
+            style={{ display: "none" }}
+          />
+
           {/* CAMERA CONTROLS */}
 
           {!capture && (
@@ -852,40 +972,32 @@ if (drop) {
                 padding: "0 28px",
               }}
             >
-              {/* FLASH */}
+              {/* PHOTO LIBRARY */}
 
               <button
                 type="button"
-                onClick={toggleFlash}
-                disabled={
-                  !flashSupported ||
-                  !cameraReady
+                onClick={() =>
+                  libraryInputRef.current?.click()
                 }
-                aria-label="フラッシュ切替"
+                aria-label="フォトライブラリから選択"
                 style={{
                   justifySelf: "center",
-                  width: 44,
-                  height: 44,
+                  width: 48,
+                  height: 48,
                   display: "grid",
                   placeItems: "center",
-                  borderRadius: "50%",
+                  borderRadius: 12,
                   border:
                     "1px solid rgba(255,255,255,.18)",
-                  background: flashOn
-                    ? "rgba(116,78,213,.78)"
-                    : "rgba(8,8,13,.48)",
+                  background:
+                    "rgba(8,8,13,.48)",
                   color: "#fff",
                   backdropFilter: "blur(12px)",
                   cursor: "pointer",
-                  opacity:
-                    !flashSupported ||
-                    !cameraReady
-                      ? 0.35
-                      : 1,
-                  fontSize: 17,
+                  fontSize: 21,
                 }}
               >
-                ⚡
+                ▣
               </button>
 
               {/* SHUTTER */}
