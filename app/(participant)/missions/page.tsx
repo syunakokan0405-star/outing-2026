@@ -1,4 +1,4 @@
-﻿import Link from 'next/link'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import {
   BookOpen,
@@ -49,11 +49,11 @@ export default async function Missions({
             <p className="uiEyebrow">ERROR</p>
 
             <h1 className="uiTitle">
-              髫ｪ・ｭ陞ｳ螢ｹ縺顔ｹ晢ｽｩ郢晢ｽｼ
+              イベント設定を読み込めません
             </h1>
 
             <p className="uiMuted">
-              NEXT_PUBLIC_EVENT_ID 邵ｺ迹夲ｽｨ・ｭ陞ｳ螢ｹ・・ｹｧ蠕娯ｻ邵ｺ繝ｻ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ
+              NEXT_PUBLIC_EVENT_ID が設定されていません。
             </p>
           </section>
         </div>
@@ -92,7 +92,7 @@ export default async function Missions({
                 margin: '6px 0 8px',
               }}
             >
-              陷ｿ繧・・髢繝ｻ繝･陜｣・ｱ郢ｧ雋槫徐陟募干縲堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・
+              参加者情報を読み込めませんでした
             </h2>
 
             <p className="uiMuted">
@@ -164,7 +164,7 @@ export default async function Missions({
                 margin: '6px 0 8px',
               }}
             >
-              Mission郢ｧ雋槫徐陟募干縲堤ｸｺ髦ｪ竏ｪ邵ｺ蟶呻ｽ鍋ｸｺ・ｧ邵ｺ蜉ｱ笳・
+              Mission情報を読み込めませんでした
             </h2>
 
             <p className="uiMuted">
@@ -409,7 +409,7 @@ return (
                 fontSize: 18,
               }}
             >
-              霑ｴ・ｾ陜ｨ・ｨMission邵ｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ・
+              表示できるMissionはありません
             </h2>
 
             <p
@@ -421,8 +421,7 @@ return (
                 fontSize: 12,
               }}
             >
-              隴・ｽｰ邵ｺ蜉ｱ・曠rop邵ｺ謔溘・鬮｢荵晢ｼ・ｹｧ蠕鯉ｽ狗ｸｺ・ｨ
-              邵ｺ阮呻ｼ・ｸｺ・ｫ髯ｦ・ｨ驕会ｽｺ邵ｺ霈費ｽ檎ｸｺ・ｾ邵ｺ蜷ｶ繝ｻ
+              新しいDropが公開されると、ここにMissionが表示されます。
             </p>
           </section>
         )}
@@ -654,12 +653,12 @@ return (
                           <span
                             className="outingSans"
                           >
-                            郢晢ｽ｡郢晢ｽｳ郢ｧ・ｷ郢晢ｽｧ郢晢ｽｳ闔会ｽｻ隲｢繝ｻ
+                            {mission.requiredMentions}人をメンション
                           </span>
 
                           {mission.difficulty && (
                             <>
-                              <span>遯ｶ・｢</span>
+                              <span>・</span>
 
                               <span
                                 className="outingSans"
