@@ -91,6 +91,12 @@ async function createCroppedImage(
   )
 }
 
+type ConnectionPerson = {
+  id: string
+  name: string
+  avatarUrl: string | null
+}
+
 export default function Me() {
   const supabase = useMemo(
     () => createClient(),
@@ -114,6 +120,15 @@ export default function Me() {
 
   const [connections, setConnections] =
     useState(0)
+
+  const [connectionPeople, setConnectionPeople] =
+    useState<ConnectionPerson[]>([])
+
+  const [showConnections, setShowConnections] =
+    useState(false)
+
+  const [connectionsLoading, setConnectionsLoading] =
+    useState(false)
 
   const [rank, setRank] =
     useState<number | null>(null)
@@ -251,6 +266,85 @@ export default function Me() {
       }
     })()
   }, [supabase])
+
+  async function openConnections() {
+    if (!participantId) return
+
+    setShowConnections(true)
+    setConnectionsLoading(true)
+
+    try {
+      const [{ data: rowsA, error: errorA }, { data: rowsB, error: errorB }] =
+        await Promise.all([
+          supabase
+            .from('connections')
+            .select('participant_b_id')
+            .eq('participant_a_id', participantId),
+          supabase
+            .from('connections')
+            .select('participant_a_id')
+            .eq('participant_b_id', participantId),
+        ])
+
+      if (errorA) throw errorA
+      if (errorB) throw errorB
+
+      const ids = Array.from(
+        new Set([
+          ...(rowsA ?? []).map((row: any) => row.participant_b_id),
+          ...(rowsB ?? []).map((row: any) => row.participant_a_id),
+        ].filter(Boolean)),
+      ) as string[]
+
+      if (!ids.length) {
+        setConnectionPeople([])
+        return
+      }
+
+      const { data: people, error: peopleError } =
+        await supabase
+          .from('participants')
+          .select('id,name,avatar_path')
+          .in('id', ids)
+
+      if (peopleError) throw peopleError
+
+      const withAvatars = await Promise.all(
+        (people ?? []).map(async (person: any) => {
+          let signedAvatarUrl: string | null = null
+
+          if (person.avatar_path) {
+            const { data } = await supabase.storage
+              .from('outing-photos')
+              .createSignedUrl(person.avatar_path, 60 * 60)
+
+            signedAvatarUrl = data?.signedUrl ?? null
+          }
+
+          return {
+            id: person.id,
+            name: person.name,
+            avatarUrl: signedAvatarUrl,
+          } satisfies ConnectionPerson
+        }),
+      )
+
+      withAvatars.sort((a, b) =>
+        a.name.localeCompare(b.name, 'ja'),
+      )
+
+      setConnectionPeople(withAvatars)
+    } catch (error) {
+      console.error(error)
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'コネクションを読み込めませんでした。',
+      )
+    } finally {
+      setConnectionsLoading(false)
+    }
+  }
 
   function selectAvatar(
     event: ChangeEvent<HTMLInputElement>,
@@ -636,7 +730,11 @@ export default function Me() {
               </strong>
             </div>
 
-            <div
+            <button
+              type="button"
+              onClick={openConnections}
+              disabled={!participantId}
+              aria-label="コネクション一覧を開く"
               style={{
                 padding: '15px 14px',
                 borderRadius: 16,
@@ -644,6 +742,10 @@ export default function Me() {
                   'rgba(255,255,255,.045)',
                 border:
                   '1px solid rgba(255,255,255,.07)',
+                color: '#fff',
+                textAlign: 'left',
+                cursor: participantId ? 'pointer' : 'default',
+                font: 'inherit',
               }}
             >
               <div
@@ -674,7 +776,7 @@ export default function Me() {
               >
                 {connections}
               </strong>
-            </div>
+            </button>
           </div>
 
           {/* RANK */}
@@ -830,6 +932,202 @@ export default function Me() {
           <LivePosts mode="gallery" />
         </section>
       </div>
+
+      {/* CONNECTIONS */}
+      {showConnections && (
+        <div
+          onClick={() => setShowConnections(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 105,
+            background: 'rgba(0,0,0,.64)',
+            backdropFilter: 'blur(9px)',
+            WebkitBackdropFilter: 'blur(9px)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <section
+            onClick={(event) => event.stopPropagation()}
+            aria-label="コネクション一覧"
+            style={{
+              width: '100%',
+              maxWidth: 500,
+              maxHeight: '76dvh',
+              overflow: 'hidden',
+              borderRadius: 24,
+              background: 'rgba(20,21,28,.96)',
+              border: '1px solid rgba(255,255,255,.10)',
+              boxShadow: '0 24px 70px rgba(0,0,0,.48)',
+            }}
+          >
+            <header
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '18px 18px 14px',
+                borderBottom: '1px solid rgba(255,255,255,.07)',
+              }}
+            >
+              <div>
+                <p
+                  className="outingSerifEn"
+                  style={{
+                    margin: 0,
+                    color: 'rgba(255,255,255,.42)',
+                    fontSize: 9,
+                    letterSpacing: '.16em',
+                  }}
+                >
+                  YOUR PEOPLE
+                </p>
+                <h2
+                  className="outingSerifEn"
+                  style={{
+                    margin: '4px 0 0',
+                    color: '#fff',
+                    fontSize: 22,
+                    fontWeight: 500,
+                    letterSpacing: '.08em',
+                  }}
+                >
+                  CONNECTIONS
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowConnections(false)}
+                aria-label="閉じる"
+                style={roundButtonStyle}
+              >
+                <X size={19} />
+              </button>
+            </header>
+
+            <div
+              style={{
+                overflowY: 'auto',
+                maxHeight: 'calc(76dvh - 82px)',
+                padding: 18,
+              }}
+            >
+              {connectionsLoading ? (
+                <p
+                  style={{
+                    margin: '28px 0',
+                    textAlign: 'center',
+                    color: 'rgba(255,255,255,.45)',
+                    fontSize: 12,
+                  }}
+                >
+                  読み込み中...
+                </p>
+              ) : connectionPeople.length === 0 ? (
+                <div
+                  style={{
+                    padding: '28px 10px 32px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <UsersRound
+                    size={27}
+                    style={{
+                      color: 'rgba(255,255,255,.30)',
+                    }}
+                  />
+                  <p
+                    className="outingSerifJa"
+                    style={{
+                      margin: '12px 0 0',
+                      color: 'rgba(255,255,255,.62)',
+                      fontSize: 14,
+                    }}
+                  >
+                    まだコネクションがありません
+                  </p>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns:
+                      'repeat(3, minmax(0, 1fr))',
+                    gap: 16,
+                  }}
+                >
+                  {connectionPeople.map((person) => (
+                    <Link
+                      key={person.id}
+                      href={`/profile/${person.id}`}
+                      onClick={() => setShowConnections(false)}
+                      style={{
+                        minWidth: 0,
+                        color: '#fff',
+                        textDecoration: 'none',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 68,
+                          height: 68,
+                          margin: '0 auto',
+                          overflow: 'hidden',
+                          borderRadius: '50%',
+                          display: 'grid',
+                          placeItems: 'center',
+                          background:
+                            'rgba(255,255,255,.07)',
+                          border:
+                            '1px solid rgba(255,255,255,.10)',
+                          color: '#fff',
+                          fontSize: 20,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {person.avatarUrl ? (
+                          <img
+                            src={person.avatarUrl}
+                            alt=""
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          person.name.slice(0, 1)
+                        )}
+                      </div>
+
+                      <p
+                        className="outingSerifJa"
+                        style={{
+                          margin: '8px 0 0',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          color: 'rgba(255,255,255,.82)',
+                          fontSize: 11,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {person.name}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* AVATAR ACTION SHEET */}
       {showAvatarMenu && !cropImage && (
