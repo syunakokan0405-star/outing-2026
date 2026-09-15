@@ -20,6 +20,8 @@ type PostRow = {
   participant_id: string
   mission_id: string | null
   image_path: string
+  storage_provider: 'supabase' | 'r2'
+  r2_object_key: string | null
   comment: string | null
   visibility: 'stream' | 'gallery'
   created_at: string
@@ -96,6 +98,28 @@ async function signedUrlMap(
   return map
 }
 
+async function r2ReadUrlMap(posts: PostRow[]) {
+  const entries = await Promise.all(
+    posts
+      .filter((post) => post.storage_provider === 'r2' && post.r2_object_key)
+      .map(async (post) => {
+        try {
+          const response = await fetch('/api/r2/read-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ postId: post.id }),
+          })
+          if (!response.ok) return [post.id, ''] as const
+          const data = (await response.json()) as { signedUrl?: string }
+          return [post.id, data.signedUrl ?? ''] as const
+        } catch {
+          return [post.id, ''] as const
+        }
+      }),
+  )
+  return new Map<string, string>(entries)
+}
+
 export default function LivePosts({
   mode,
   participantId,
@@ -151,6 +175,8 @@ export default function LivePosts({
         participant_id,
         mission_id,
         image_path,
+        storage_provider,
+        r2_object_key,
         comment,
         visibility,
         created_at,
@@ -225,7 +251,9 @@ export default function LivePosts({
       (adminResult.data ?? []) as unknown as AdminStreamRow[]
 
     const paths = [
-      ...rows.map((row) => row.image_path),
+      ...rows
+        .filter((row) => row.storage_provider !== 'r2')
+        .map((row) => row.image_path),
       ...rows
         .map((row) => row.participants?.avatar_path ?? '')
         .filter(Boolean),
@@ -234,13 +262,19 @@ export default function LivePosts({
         .filter(Boolean),
     ]
 
-    const urls = await signedUrlMap(supabase, paths)
+    const [urls, r2Urls] = await Promise.all([
+      signedUrlMap(supabase, paths),
+      r2ReadUrlMap(rows),
+    ])
 
     const participantItems: UserFeedItem[] =
       rows.map((post) => ({
         ...post,
         kind: 'participant',
-        signedUrl: urls.get(post.image_path) ?? '',
+        signedUrl:
+          post.storage_provider === 'r2'
+            ? (r2Urls.get(post.id) ?? '')
+            : (urls.get(post.image_path) ?? ''),
         avatarUrl: post.participants?.avatar_path
           ? (urls.get(post.participants.avatar_path) ?? '')
           : '',
@@ -329,12 +363,19 @@ export default function LivePosts({
   }
 
   async function downloadPhoto(post: UserFeedItem) {
+    if (post.storage_provider === 'r2') {
+      if (!post.signedUrl) {
+        setError('ダウンロードURLを作成できませんでした。')
+        return
+      }
+      window.location.assign(post.signedUrl)
+      return
+    }
+
     const { data, error: downloadError } =
       await supabase.storage
         .from('outing-photos')
-        .createSignedUrl(post.image_path, 60, {
-          download: true,
-        })
+        .createSignedUrl(post.image_path, 60, { download: true })
 
     if (downloadError || !data?.signedUrl) {
       setError(
@@ -343,7 +384,6 @@ export default function LivePosts({
       )
       return
     }
-
     window.location.assign(data.signedUrl)
   }
 
@@ -398,15 +438,27 @@ export default function LivePosts({
       return
     }
 
-    const { error: storageError } =
-      await supabase.storage
-        .from('outing-photos')
-        .remove([post.image_path])
-
-    if (storageError) {
-      setError(
-        '投稿は削除しましたが、画像ファイルを削除できませんでした。運営に確認してください。',
-      )
+    if (post.storage_provider === 'r2') {
+      const response = await fetch('/api/r2/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: post.id }),
+      })
+      if (!response.ok) {
+        setError(
+          '投稿は削除しましたが、R2画像ファイルを削除できませんでした。運営に確認してください。',
+        )
+      }
+    } else {
+      const { error: storageError } =
+        await supabase.storage
+          .from('outing-photos')
+          .remove([post.image_path])
+      if (storageError) {
+        setError(
+          '投稿は削除しましたが、画像ファイルを削除できませんでした。運営に確認してください。',
+        )
+      }
     }
 
     void load()

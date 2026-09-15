@@ -10,6 +10,8 @@
     "check:config": "node --env-file=.env.local scripts/check-config.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1132.0",
+    "@aws-sdk/s3-request-presigner": "^3.1132.0",
     "@supabase/ssr": "0.12.4",
     "@supabase/supabase-js": "2.112.3",
     "lucide-react": "^1.41.0",

@@ -1,7 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { putPendingPost, removePendingPost, type QueuedPost } from '@/lib/offline-post-queue'
+import {
+  putPendingPost,
+  removePendingPost,
+  type QueuedPost,
+} from '@/lib/offline-post-queue'
 
-export type SubmitPostInput = Omit<QueuedPost, 'createdAt' | 'attempts' | 'status' | 'lastError'>
+export type SubmitPostInput = Omit<
+  QueuedPost,
+  'createdAt' | 'attempts' | 'status' | 'lastError'
+>
 
 export type SubmitPostResult = {
   postId: string | null
@@ -9,54 +16,113 @@ export type SubmitPostResult = {
   clientRequestId: string
 }
 
-function looksLikeDuplicateStorageError(error: { message?: string; statusCode?: string | number } | null) {
-  if (!error) return false
-  const status = String(error.statusCode ?? '')
-  return status === '409' || /duplicate|already exists|resource already exists/i.test(error.message ?? '')
-}
-
 function looksLikeNetworkError(error: unknown) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return true
-  const message = error instanceof Error ? error.message : String(error ?? '')
-  return /failed to fetch|network|load failed|fetch failed|connection|timeout|timed out|503|502|504/i.test(message)
+
+  const message =
+    error instanceof Error ? error.message : String(error ?? '')
+
+  return /failed to fetch|network|load failed|fetch failed|connection|timeout|timed out|503|502|504/i.test(
+    message,
+  )
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String((error as { message?: string } | null)?.message ?? error ?? 'Unknown error')
+  return error instanceof Error
+    ? error.message
+    : String(
+        (error as { message?: string } | null)?.message ??
+          error ??
+          'Unknown error',
+      )
 }
 
-async function sendQueuedPost(supabase: SupabaseClient, post: QueuedPost): Promise<string> {
-  let uploadedNow = false
-  const { error: uploadError } = await supabase.storage
-    .from('outing-photos')
-    .upload(post.imagePath, post.imageBlob, {
-      contentType: 'image/webp',
-      cacheControl: '3600',
-      upsert: false,
-    })
-
-  if (!uploadError) uploadedNow = true
-  else if (!looksLikeDuplicateStorageError(uploadError)) throw uploadError
-
-const { data, error: rpcError } = await supabase.rpc('submit_mission_post', {
-    p_event_id: post.eventId,
-    p_mission_id: post.missionId,
-    p_image_path: post.imagePath,
-    p_comment: post.comment,
-    p_visibility: post.visibility,
-    p_mention_ids: post.mentionIds,
-    p_client_request_id: post.clientRequestId,
+async function uploadToR2(post: QueuedPost): Promise<string> {
+  const response = await fetch('/api/r2/upload-url', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      eventId: post.eventId,
+      participantId: post.participantId,
+      clientRequestId: post.clientRequestId,
+    }),
   })
 
+  if (!response.ok) {
+    const body = await response
+      .json()
+      .catch(() => ({ error: 'Could not create upload URL.' }))
+
+    throw new Error(
+      body?.error ?? `Could not create upload URL (${response.status})`,
+    )
+  }
+
+  const data = (await response.json()) as {
+    uploadUrl?: string
+    key?: string
+  }
+
+  if (!data.uploadUrl || !data.key) {
+    throw new Error('Invalid R2 upload response.')
+  }
+
+  const uploadResponse = await fetch(data.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'image/webp',
+    },
+    body: post.imageBlob,
+  })
+
+  if (!uploadResponse.ok) {
+    throw new Error(
+      `R2 upload failed (${uploadResponse.status})`,
+    )
+  }
+
+  return data.key
+}
+
+async function sendQueuedPost(
+  supabase: SupabaseClient,
+  post: QueuedPost,
+): Promise<string> {
+  // clientRequestIdから毎回同じR2 keyが発行されるため、
+  // オフライン再送でも別ファイルは作られない。
+  const r2ObjectKey = await uploadToR2(post)
+
+  const { data, error: rpcError } = await supabase.rpc(
+    'submit_mission_post',
+    {
+      p_event_id: post.eventId,
+      p_mission_id: post.missionId,
+      p_image_path: r2ObjectKey,
+      p_client_request_id: post.clientRequestId,
+      p_comment: post.comment,
+      p_visibility: post.visibility,
+      p_mention_ids: post.mentionIds,
+      p_storage_provider: 'r2',
+      p_r2_object_key: r2ObjectKey,
+    },
+  )
+
   if (rpcError) {
-    // If this attempt definitely uploaded a new object and the DB rejected the post
-    // for a permanent reason, remove the orphaned object. On network errors we keep it
-    // because a retry can safely reuse the same path/request id.
-    if (uploadedNow && !looksLikeNetworkError(rpcError)) {
-      await supabase.storage.from('outing-photos').remove([post.imagePath]).catch(() => undefined)
-    }
+    /*
+     * RPCが失敗しても、ここではR2画像を即削除しない。
+     *
+     * 理由:
+     * DBへのレスポンスだけ通信切断した場合、
+     * 実際には投稿が作成済みの可能性がある。
+     *
+     * clientRequestIdによるRPCの冪等性と、
+     * 固定R2 keyによって安全に再送できる。
+     */
     throw rpcError
   }
+
   return String(data)
 }
 
@@ -72,43 +138,110 @@ export async function submitPostReliably(
     lastError: null,
   }
 
-  // Persist before network I/O so closing the browser or losing signal does not lose the photo.
+  // ネットワーク処理より先にIndexedDBへ保存。
+  // 投稿中に通信断・ブラウザ終了が起きても写真を失わない。
   await putPendingPost(queuedPost)
 
   try {
-    const postId = await sendQueuedPost(supabase, queuedPost)
-    await removePendingPost(queuedPost.clientRequestId)
-    return { postId, queued: false, clientRequestId: queuedPost.clientRequestId }
+    const postId = await sendQueuedPost(
+      supabase,
+      queuedPost,
+    )
+
+    await removePendingPost(
+      queuedPost.clientRequestId,
+    )
+
+    return {
+      postId,
+      queued: false,
+      clientRequestId:
+        queuedPost.clientRequestId,
+    }
   } catch (error) {
     if (looksLikeNetworkError(error)) {
-      await putPendingPost({ ...queuedPost, status: 'pending', lastError: errorMessage(error) })
-      return { postId: null, queued: true, clientRequestId: queuedPost.clientRequestId }
+      await putPendingPost({
+        ...queuedPost,
+        status: 'pending',
+        lastError: errorMessage(error),
+      })
+
+      return {
+        postId: null,
+        queued: true,
+        clientRequestId:
+          queuedPost.clientRequestId,
+      }
     }
 
-    // Immediate permanent errors are shown on the active posting screen, so remove the queue item.
-    await removePendingPost(queuedPost.clientRequestId)
+    // 権限・Mission終了など恒久的エラーは
+    // 投稿画面にそのまま表示する。
+    await removePendingPost(
+      queuedPost.clientRequestId,
+    )
+
     throw error
   }
 }
 
-export async function retryQueuedPost(supabase: SupabaseClient, post: QueuedPost) {
+export async function retryQueuedPost(
+  supabase: SupabaseClient,
+  post: QueuedPost,
+) {
   if (post.status === 'failed') {
-    return { ok: false as const, permanent: true as const, error: new Error(post.lastError ?? '再送できません') }
+    return {
+      ok: false as const,
+      permanent: true as const,
+      error: new Error(
+        post.lastError ?? '再送できません',
+      ),
+    }
   }
 
-  const next = { ...post, attempts: post.attempts + 1 }
+  const next = {
+    ...post,
+    attempts: post.attempts + 1,
+  }
+
   try {
-    const postId = await sendQueuedPost(supabase, next)
-    await removePendingPost(post.clientRequestId)
-    return { ok: true as const, postId }
+    const postId = await sendQueuedPost(
+      supabase,
+      next,
+    )
+
+    await removePendingPost(
+      post.clientRequestId,
+    )
+
+    return {
+      ok: true as const,
+      postId,
+    }
   } catch (error) {
     if (!looksLikeNetworkError(error)) {
-      // Do not silently discard an offline post when the later retry becomes invalid
-      // (for example Archive Mode or expired auth). Keep it visible for the participant.
-      await putPendingPost({ ...next, status: 'failed', lastError: errorMessage(error) })
-      return { ok: false as const, permanent: true as const, error }
+      await putPendingPost({
+        ...next,
+        status: 'failed',
+        lastError: errorMessage(error),
+      })
+
+      return {
+        ok: false as const,
+        permanent: true as const,
+        error,
+      }
     }
-    await putPendingPost({ ...next, status: 'pending', lastError: errorMessage(error) })
-    return { ok: false as const, permanent: false as const, error }
+
+    await putPendingPost({
+      ...next,
+      status: 'pending',
+      lastError: errorMessage(error),
+    })
+
+    return {
+      ok: false as const,
+      permanent: false as const,
+      error,
+    }
   }
 }
