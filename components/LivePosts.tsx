@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -152,6 +152,11 @@ export default function LivePosts({
   const [error, setError] = useState('')
   const [currentParticipantId, setCurrentParticipantId] =
     useState<string | null>(null)
+  const [currentEventId, setCurrentEventId] =
+    useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -162,7 +167,7 @@ export default function LivePosts({
 
     if (!authUser) {
       setError(
-        '繝ｭ繧ｰ繧､繝ｳ諠・ｱ縺後≠繧翫∪縺帙ｓ縲ょ・縺ｫ蜷榊燕繧帝∈謚槭＠縺ｦ縺上□縺輔＞縲・,
+        'ログイン情報がありません。先に名前を選択してください。',
       )
       setLoading(false)
       return
@@ -178,12 +183,13 @@ export default function LivePosts({
       .maybeSingle()
 
     if (participantError || !participant) {
-      setError('蜿ょ刈閠・ュ蝣ｱ繧貞叙蠕励〒縺阪∪縺帙ｓ縺ｧ縺励◆縲・)
+      setError('参加者情報を取得できませんでした。')
       setLoading(false)
       return
     }
 
     setCurrentParticipantId(participant.id)
+    setCurrentEventId(participant.event_id)
 
     let query = supabase
       .from('posts')
@@ -319,8 +325,139 @@ export default function LivePosts({
     )
 
     setItems(merged)
+    setHasMore(mode === 'stream' && rows.length === 30)
     setLoading(false)
   }, [mode, participantId, supabase])
+
+  const loadMore = useCallback(async () => {
+    if (mode !== 'stream' || !currentEventId || !currentParticipantId || loadingMore || !hasMore) return
+
+    const participantItems = items.filter(
+      (item): item is UserFeedItem => item.kind === 'participant',
+    )
+    const oldest = participantItems[participantItems.length - 1]
+    if (!oldest) return
+
+    setLoadingMore(true)
+    try {
+      const { data, error: moreError } = await supabase
+        .from('posts')
+        .select(`
+          id,event_id,participant_id,mission_id,image_path,storage_provider,r2_object_key,
+          comment,visibility,created_at,
+          participants!posts_participant_id_fkey(name,avatar_path),
+          missions(title,points,difficulty),
+          reactions(participant_id),
+          post_mentions(participant_id,participants(name))
+        `)
+        .eq('event_id', currentEventId)
+        .eq('visibility', 'stream')
+        .is('deleted_at', null)
+        .lt('created_at', oldest.created_at)
+        .order('created_at', { ascending: false })
+        .limit(30)
+
+      if (moreError) {
+        setError(moreError.message)
+        return
+      }
+
+      const rows = (data ?? []) as unknown as PostRow[]
+      const paths = [
+        ...rows.filter((row) => row.storage_provider !== 'r2').map((row) => row.image_path),
+        ...rows.map((row) => row.participants?.avatar_path ?? '').filter(Boolean),
+      ]
+      const [urls, r2Urls] = await Promise.all([
+        signedUrlMap(supabase, paths),
+        r2ReadUrlMap(rows),
+      ])
+      const nextItems: UserFeedItem[] = rows.map((post) => ({
+        ...post,
+        kind: 'participant',
+        signedUrl: post.storage_provider === 'r2'
+          ? (r2Urls.get(post.id) ?? '')
+          : (urls.get(post.image_path) ?? ''),
+        avatarUrl: post.participants?.avatar_path
+          ? (urls.get(post.participants.avatar_path) ?? '')
+          : '',
+        heartCount: post.reactions?.length ?? 0,
+        mine: post.participant_id === currentParticipantId,
+      }))
+
+      setItems((current) => {
+        const known = new Set(current.map((item) => `${item.kind}:${item.id}`))
+        return [...current, ...nextItems.filter((item) => !known.has(`participant:${item.id}`))]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      })
+      setHasMore(rows.length === 30)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [currentEventId, currentParticipantId, hasMore, items, loadingMore, mode, supabase])
+
+  useEffect(() => {
+    if (mode !== 'stream' || !hasMore) return
+    const target = loadMoreRef.current
+    if (!target) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMore()
+      },
+      { rootMargin: '500px 0px' },
+    )
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [hasMore, loadMore, mode])
+
+  const addRealtimePost = useCallback(async (postId: string) => {
+    if (mode !== 'stream' || !currentEventId || !currentParticipantId) return
+
+    const { data, error: postError } = await supabase
+      .from('posts')
+      .select(`
+        id,event_id,participant_id,mission_id,image_path,storage_provider,r2_object_key,
+        comment,visibility,created_at,
+        participants!posts_participant_id_fkey(name,avatar_path),
+        missions(title,points,difficulty),
+        reactions(participant_id),
+        post_mentions(participant_id,participants(name))
+      `)
+      .eq('id', postId)
+      .eq('event_id', currentEventId)
+      .eq('visibility', 'stream')
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (postError || !data) return
+    const post = data as unknown as PostRow
+    const paths = [
+      ...(post.storage_provider !== 'r2' ? [post.image_path] : []),
+      post.participants?.avatar_path ?? '',
+    ].filter(Boolean)
+    const [urls, r2Urls] = await Promise.all([
+      signedUrlMap(supabase, paths),
+      r2ReadUrlMap([post]),
+    ])
+    const nextItem: UserFeedItem = {
+      ...post,
+      kind: 'participant',
+      signedUrl: post.storage_provider === 'r2'
+        ? (r2Urls.get(post.id) ?? '')
+        : (urls.get(post.image_path) ?? ''),
+      avatarUrl: post.participants?.avatar_path
+        ? (urls.get(post.participants.avatar_path) ?? '')
+        : '',
+      heartCount: post.reactions?.length ?? 0,
+      mine: post.participant_id === currentParticipantId,
+    }
+
+    setItems((current) => {
+      if (current.some((item) => item.kind === 'participant' && item.id === nextItem.id)) return current
+      return [nextItem, ...current].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
+    })
+  }, [currentEventId, currentParticipantId, mode, supabase])
 
   const loadRef = useRef(load)
 
@@ -378,7 +515,28 @@ export default function LivePosts({
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'posts',
+        },
+        (payload) => {
+          const postId = String((payload.new as { id?: string }).id ?? '')
+          if (postId) void addRealtimePost(postId)
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'posts',
+        },
+        scheduleLoad,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
           schema: 'public',
           table: 'posts',
         },
@@ -413,7 +571,7 @@ export default function LivePosts({
 
       void supabase.removeChannel(channel)
     }
-  }, [mode, participantId, supabase])
+  }, [addRealtimePost, mode, participantId, supabase])
 
   async function toggleHeart(post: UserFeedItem) {
     if (post.mine) return
@@ -435,7 +593,7 @@ export default function LivePosts({
   async function downloadPhoto(post: UserFeedItem) {
     if (post.storage_provider === 'r2') {
       if (!post.signedUrl) {
-        setError('繝繧ｦ繝ｳ繝ｭ繝ｼ繝蔚RL繧剃ｽ懈・縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲・)
+        setError('ダウンロードURLを作成できませんでした。')
         return
       }
       window.location.assign(post.signedUrl)
@@ -450,7 +608,7 @@ export default function LivePosts({
     if (downloadError || !data?.signedUrl) {
       setError(
         downloadError?.message ??
-          '繝繧ｦ繝ｳ繝ｭ繝ｼ繝蔚RL繧剃ｽ懈・縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲・,
+          'ダウンロードURLを作成できませんでした。',
       )
       return
     }
@@ -461,14 +619,14 @@ export default function LivePosts({
     if (!post.mine) return
 
     const next = window.prompt(
-      '繧ｳ繝｡繝ｳ繝医ｒ邱ｨ髮・ｼ・0譁・ｭ励∪縺ｧ・・,
+      'コメントを編集（30文字まで）',
       post.comment ?? '',
     )
 
     if (next === null) return
 
     if (next.length > 30) {
-      setError('繧ｳ繝｡繝ｳ繝医・30譁・ｭ励∪縺ｧ縺ｧ縺吶・)
+      setError('コメントは30文字までです。')
       return
     }
 
@@ -491,7 +649,7 @@ export default function LivePosts({
     if (!post.mine) return
 
     const confirmed = window.confirm(
-      '縺薙・蜀咏悄繧貞炎髯､縺励∪縺吶°・・蛻晏屓CLEAR縺ｧ迯ｲ蠕励＠縺溘・繧､繝ｳ繝医ｂ蜿悶ｊ豸医＆繧後∪縺吶・,
+      'この写真を削除しますか？ 初回CLEARで獲得したポイントも取り消されます。',
     )
 
     if (!confirmed) return
@@ -511,12 +669,12 @@ export default function LivePosts({
         const body = await response
           .json()
           .catch(() => ({
-            error: '謚慕ｨｿ繧貞炎髯､縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲・,
+            error: '投稿を削除できませんでした。',
           }))
 
         setError(
           body?.error ??
-            '謚慕ｨｿ繧貞炎髯､縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲・,
+            '投稿を削除できませんでした。',
         )
         return
       }
@@ -544,7 +702,7 @@ export default function LivePosts({
 
     if (storageError) {
       setError(
-        '謚慕ｨｿ縺ｯ蜑企勁縺励∪縺励◆縺後∫判蜒上ヵ繧｡繧､繝ｫ繧貞炎髯､縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲る°蝟ｶ縺ｫ遒ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
+        '投稿は削除しましたが、画像ファイルを削除できませんでした。運営に確認してください。',
       )
     }
 
@@ -564,7 +722,7 @@ export default function LivePosts({
           className="uiMuted"
           style={{ margin: 0 }}
         >
-          蜀咏悄繧定ｪｭ縺ｿ霎ｼ縺ｿ荳ｭ...
+          写真を読み込み中...
         </p>
       </section>
     )
@@ -588,7 +746,7 @@ export default function LivePosts({
             fontSize: 17,
           }}
         >
-          陦ｨ遉ｺ縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆
+          表示できませんでした
         </h2>
 
         <p className="uiMuted">
@@ -603,7 +761,7 @@ export default function LivePosts({
             marginTop: 10,
           }}
         >
-          蜀崎ｪｭ縺ｿ霎ｼ縺ｿ
+          再読み込み
         </button>
       </section>
     )
@@ -633,15 +791,15 @@ export default function LivePosts({
           }}
         >
           {mode === 'stream'
-            ? 'Stream縺ｯ縺ｾ縺遨ｺ縺ｧ縺・
-            : 'Gallery縺ｯ縺ｾ縺遨ｺ縺ｧ縺・}
+            ? 'Streamはまだ空です'
+            : 'Galleryはまだ空です'}
         </h2>
 
         <p
           className="uiMuted"
           style={{ margin: 0 }}
         >
-          譛蛻昴・蜀咏悄繧呈兜遞ｿ縺励※縺ｿ繧医≧縲・
+          最初の写真を投稿してみよう。
         </p>
       </section>
     )
@@ -667,7 +825,7 @@ export default function LivePosts({
     >
       {items.map((item) => {
         /*
-         * 驕句霧謚慕ｨｿ
+         * 運営投稿
          */
         if (item.kind === 'admin') {
           return (
@@ -688,7 +846,7 @@ export default function LivePosts({
                 >
                   <img
                     src={item.signedUrl}
-                    alt="驕句霧縺九ｉ縺ｮ謚慕ｨｿ蜀咏悄"
+                    alt="運営からの投稿写真"
                     style={{
                       width: '100%',
                       height: '100%',
@@ -798,7 +956,7 @@ export default function LivePosts({
                   >
                     {item.admin_users
                       ?.display_name ??
-                      '驕句霧'}
+                      '運営'}
                   </strong>
 
                   <span>
@@ -821,13 +979,13 @@ export default function LivePosts({
         }
 
         /*
-         * 蜿ょ刈閠・兜遞ｿ
+         * 参加者投稿
          */
         const post = item
 
         /*
-         * Gallery縺ｧ縺ｯ蜀咏悄繧剃ｸｻ蠖ｹ縺ｫ縺励◆
-         * 2蛻励げ繝ｪ繝・ラ縺縺題｡ｨ遉ｺ
+         * Galleryでは写真を主役にした
+         * 2列グリッドだけ表示
          */
         if (mode === 'gallery') {
           return (
@@ -850,8 +1008,8 @@ export default function LivePosts({
                   alt={`${
                     post.participants
                       ?.name ??
-                    '蜿ょ刈閠・
-                  }縺ｮ謚慕ｨｿ蜀咏悄`}
+                    '参加者'
+                  }の投稿写真`}
                   style={{
                     width: '100%',
                     height: '100%',
@@ -873,7 +1031,7 @@ export default function LivePosts({
                     textAlign: 'center',
                   }}
                 >
-                  蜀咏悄繧定｡ｨ遉ｺ縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆
+                  写真を表示できませんでした
                 </div>
               )}
 
@@ -946,7 +1104,7 @@ export default function LivePosts({
               overflow: 'hidden',
             }}
           >
-            {/* 謚慕ｨｿ閠・*/}
+            {/* 投稿者 */}
             <div
               style={{
                 display: 'flex',
@@ -988,7 +1146,7 @@ export default function LivePosts({
                   {post.avatarUrl ? (
                     <img
                       src={post.avatarUrl}
-                      alt={`${post.participants?.name ?? '蜿ょ刈閠・}縺ｮ繝励Ο繝輔ぅ繝ｼ繝ｫ逕ｻ蜒汁}
+                      alt={`${post.participants?.name ?? '参加者'}のプロフィール画像`}
                       style={{
                         width: '100%',
                         height: '100%',
@@ -1060,7 +1218,7 @@ export default function LivePosts({
               )}
             </div>
 
-            {/* 蜀咏悄 */}
+            {/* 写真 */}
             <div
               style={{
                 position: 'relative',
@@ -1074,8 +1232,8 @@ export default function LivePosts({
                   alt={`${
                     post.participants
                       ?.name ??
-                    '蜿ょ刈閠・
-                  }縺ｮ謚慕ｨｿ蜀咏悄`}
+                    '参加者'
+                  }の投稿写真`}
                   style={{
                     width: '100%',
                     maxHeight: 620,
@@ -1094,7 +1252,7 @@ export default function LivePosts({
                     fontSize: 12,
                   }}
                 >
-                  蜀咏悄繧定｡ｨ遉ｺ縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆
+                  写真を表示できませんでした
                 </div>
               )}
 
@@ -1148,7 +1306,7 @@ export default function LivePosts({
               )}
             </div>
 
-         {/* 謚慕ｨｿ諠・ｱ */}
+         {/* 投稿情報 */}
 <div
   style={{
     padding: '9px 14px 10px',
@@ -1158,7 +1316,7 @@ export default function LivePosts({
     WebkitBackdropFilter: 'blur(16px)',
   }}
 >
-  {/* 繧｢繧ｯ繧ｷ繝ｧ繝ｳ */}
+  {/* アクション */}
   <div
     style={{
       display: 'flex',
@@ -1173,8 +1331,8 @@ export default function LivePosts({
       onClick={() => void toggleHeart(post)}
       title={
         post.mine
-          ? '閾ｪ蛻・・謚慕ｨｿ縺ｫ縺ｯ繝上・繝医〒縺阪∪縺帙ｓ'
-          : '繝上・繝・
+          ? '自分の投稿にはハートできません'
+          : 'ハート'
       }
       style={{
         border: 0,
@@ -1198,7 +1356,7 @@ export default function LivePosts({
     <button
       type="button"
       onClick={() => void downloadPhoto(post)}
-      title="蜀咏悄繧剃ｿ晏ｭ・
+      title="写真を保存"
       style={{
         border: 0,
         background: 'transparent',
@@ -1229,7 +1387,7 @@ export default function LivePosts({
     </span>
   </div>
 
-  {/* 繧ｳ繝｡繝ｳ繝・*/}
+  {/* コメント */}
   {post.comment && (
     <p
       style={{
@@ -1243,7 +1401,7 @@ export default function LivePosts({
     </p>
   )}
 
-  {/* 繝｡繝ｳ繧ｷ繝ｧ繝ｳ */}
+  {/* メンション */}
   {!!post.post_mentions?.length && (
     <div
       style={{
@@ -1270,12 +1428,12 @@ export default function LivePosts({
               mention.participants?.name,
           )
           .filter(Boolean)
-          .join(' 繝ｻ ')}
+          .join(' ・ ')}
       </span>
     </div>
   )}
 
-  {/* 閾ｪ蛻・・謚慕ｨｿ謫堺ｽ・*/}
+  {/* 自分の投稿操作 */}
   {post.mine && (
     <div
       style={{
@@ -1303,7 +1461,7 @@ export default function LivePosts({
         }}
       >
         <Pencil size={12} strokeWidth={1.7} />
-        繧ｳ繝｡繝ｳ繝育ｷｨ髮・
+        コメント編集
       </button>
 
       <button
@@ -1322,7 +1480,7 @@ export default function LivePosts({
         }}
       >
                    <Trash2 size={12} strokeWidth={1.7} />
-        蜑企勁
+        削除
       </button>
     </div>
   )}
@@ -1331,6 +1489,21 @@ export default function LivePosts({
 </article>
         )
       })}
+
+      {mode === 'stream' && (
+        <div
+          ref={loadMoreRef}
+          style={{
+            minHeight: 1,
+            textAlign: 'center',
+            color: 'rgba(255,255,255,.45)',
+            fontSize: 11,
+            padding: loadingMore ? '10px 0' : 0,
+          }}
+        >
+          {loadingMore ? 'さらに読み込み中...' : ''}
+        </div>
+      )}
     </div>
   )
 }
