@@ -459,6 +459,41 @@ export default function LivePosts({
     })
   }, [currentEventId, currentParticipantId, mode, supabase])
 
+  const refreshPostHearts = useCallback(
+    async (postId: string) => {
+      if (!postId) return
+
+      const { data, error: reactionError } = await supabase
+        .from('reactions')
+        .select('participant_id')
+        .eq('post_id', postId)
+
+      if (reactionError) return
+
+      const reactions = (data ?? []) as {
+        participant_id: string
+      }[]
+
+      setItems((current) =>
+        current.map((item) => {
+          if (
+            item.kind !== 'participant' ||
+            item.id !== postId
+          ) {
+            return item
+          }
+
+          return {
+            ...item,
+            reactions,
+            heartCount: reactions.length,
+          }
+        }),
+      )
+    },
+    [supabase],
+  )
+
   const loadRef = useRef(load)
 
   useEffect(() => {
@@ -549,7 +584,21 @@ export default function LivePosts({
           schema: 'public',
           table: 'reactions',
         },
-        scheduleLoad,
+        (payload) => {
+          const nextRow = payload.new as {
+            post_id?: string
+          }
+          const oldRow = payload.old as {
+            post_id?: string
+          }
+          const postId = String(
+            nextRow?.post_id ?? oldRow?.post_id ?? '',
+          )
+
+          if (postId) {
+            void refreshPostHearts(postId)
+          }
+        },
       )
       .on(
         'postgres_changes',
@@ -571,7 +620,13 @@ export default function LivePosts({
 
       void supabase.removeChannel(channel)
     }
-  }, [addRealtimePost, mode, participantId, supabase])
+  }, [
+    addRealtimePost,
+    mode,
+    participantId,
+    refreshPostHearts,
+    supabase,
+  ])
 
   async function toggleHeart(post: UserFeedItem) {
     if (post.mine) return
@@ -585,9 +640,10 @@ export default function LivePosts({
 
     if (heartError) {
       setError(heartError.message)
-    } else {
-      void load()
+      return
     }
+
+    void refreshPostHearts(post.id)
   }
 
   async function downloadPhoto(post: UserFeedItem) {
