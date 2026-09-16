@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Download,
   Heart,
@@ -322,8 +322,54 @@ export default function LivePosts({
     setLoading(false)
   }, [mode, participantId, supabase])
 
+  const loadRef = useRef(load)
+
   useEffect(() => {
-    void load()
+    loadRef.current = load
+  }, [load])
+
+  useEffect(() => {
+    let disposed = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let loadingNow = false
+    let reloadQueued = false
+
+    const runLoad = async () => {
+      if (disposed) return
+
+      if (loadingNow) {
+        reloadQueued = true
+        return
+      }
+
+      loadingNow = true
+
+      try {
+        await loadRef.current()
+      } finally {
+        loadingNow = false
+
+        if (!disposed && reloadQueued) {
+          reloadQueued = false
+          void runLoad()
+        }
+      }
+    }
+
+    const scheduleLoad = () => {
+      if (disposed) return
+
+      if (timer) {
+        clearTimeout(timer)
+      }
+
+      timer = setTimeout(() => {
+        timer = null
+        void runLoad()
+      }, 400)
+    }
+
+    void runLoad()
 
     const channel = supabase
       .channel(
@@ -336,7 +382,7 @@ export default function LivePosts({
           schema: 'public',
           table: 'posts',
         },
-        () => void load(),
+        scheduleLoad,
       )
       .on(
         'postgres_changes',
@@ -345,7 +391,7 @@ export default function LivePosts({
           schema: 'public',
           table: 'reactions',
         },
-        () => void load(),
+        scheduleLoad,
       )
       .on(
         'postgres_changes',
@@ -354,14 +400,20 @@ export default function LivePosts({
           schema: 'public',
           table: 'stream_posts',
         },
-        () => void load(),
+        scheduleLoad,
       )
       .subscribe()
 
     return () => {
+      disposed = true
+
+      if (timer) {
+        clearTimeout(timer)
+      }
+
       void supabase.removeChannel(channel)
     }
-  }, [load, mode, participantId, supabase])
+  }, [mode, participantId, supabase])
 
   async function toggleHeart(post: UserFeedItem) {
     if (post.mine) return
