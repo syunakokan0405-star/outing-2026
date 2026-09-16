@@ -69,6 +69,17 @@ type AdminFeedItem = AdminStreamRow & {
 
 type FeedItem = UserFeedItem | AdminFeedItem
 
+type LivePostsCacheEntry = {
+  items: FeedItem[]
+  currentParticipantId: string | null
+  currentEventId: string | null
+  hasMore: boolean
+  savedAt: number
+}
+
+const livePostsCache = new Map<string, LivePostsCacheEntry>()
+
+
 async function signedUrlMap(
   supabase: ReturnType<typeof createClient>,
   paths: string[],
@@ -146,20 +157,35 @@ export default function LivePosts({
   participantId?: string
 }) {
   const supabase = useMemo(() => createClient(), [])
+  const cacheKey = `${mode}:${participantId ?? 'self'}`
+  const initialCache = livePostsCache.get(cacheKey)
 
-  const [items, setItems] = useState<FeedItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<FeedItem[]>(
+    () => initialCache?.items ?? [],
+  )
+  const [loading, setLoading] = useState(
+    () => !initialCache,
+  )
   const [error, setError] = useState('')
   const [currentParticipantId, setCurrentParticipantId] =
-    useState<string | null>(null)
+    useState<string | null>(
+      () => initialCache?.currentParticipantId ?? null,
+    )
   const [currentEventId, setCurrentEventId] =
-    useState<string | null>(null)
-  const [hasMore, setHasMore] = useState(false)
+    useState<string | null>(
+      () => initialCache?.currentEventId ?? null,
+    )
+  const [hasMore, setHasMore] = useState(
+    () => initialCache?.hasMore ?? false,
+  )
   const [loadingMore, setLoadingMore] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    const cached = livePostsCache.get(cacheKey)
+    if (!cached?.items.length) {
+      setLoading(true)
+    }
     setError('')
 
     const { data: authData } = await supabase.auth.getUser()
@@ -324,10 +350,21 @@ export default function LivePosts({
         new Date(a.created_at).getTime(),
     )
 
+    const nextHasMore =
+      mode === 'stream' && rows.length === 30
+
+    livePostsCache.set(cacheKey, {
+      items: merged,
+      currentParticipantId: participant.id,
+      currentEventId: participant.event_id,
+      hasMore: nextHasMore,
+      savedAt: Date.now(),
+    })
+
     setItems(merged)
-    setHasMore(mode === 'stream' && rows.length === 30)
+    setHasMore(nextHasMore)
     setLoading(false)
-  }, [mode, participantId, supabase])
+  }, [cacheKey, mode, participantId, supabase])
 
   const loadMore = useCallback(async () => {
     if (mode !== 'stream' || !currentEventId || !currentParticipantId || loadingMore || !hasMore) return
@@ -493,6 +530,25 @@ export default function LivePosts({
     },
     [supabase],
   )
+
+  useEffect(() => {
+    if (loading) return
+
+    livePostsCache.set(cacheKey, {
+      items,
+      currentParticipantId,
+      currentEventId,
+      hasMore,
+      savedAt: Date.now(),
+    })
+  }, [
+    cacheKey,
+    currentEventId,
+    currentParticipantId,
+    hasMore,
+    items,
+    loading,
+  ])
 
   const loadRef = useRef(load)
 
