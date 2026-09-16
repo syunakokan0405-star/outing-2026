@@ -217,32 +217,49 @@ export default async function Missions({
           assignment.mission.image_path,
       })) ?? []
 
-  const missionsWithImages =
-    await Promise.all(
-      missions.map(async (mission) => {
-        if (!mission.imagePath) {
-          return {
-            ...mission,
-            imageUrl: '/mission-default.jpg',
-          }
-        }
+  const missionImagePaths = [
+    ...new Set(
+      missions
+        .map((mission) => mission.imagePath)
+        .filter((path): path is string => Boolean(path)),
+    ),
+  ]
 
-        const { data: signedImage } =
-          await supabase.storage
-            .from('outing-photos')
-            .createSignedUrl(
-              mission.imagePath,
-              60 * 60,
-            )
+  const missionImageUrlMap = new Map<string, string>()
 
-        return {
-          ...mission,
-          imageUrl:
-            signedImage?.signedUrl ??
-            '/mission-default.jpg',
+  if (missionImagePaths.length > 0) {
+    const { data: signedImages } =
+      await supabase.storage
+        .from('outing-photos')
+        .createSignedUrls(
+          missionImagePaths,
+          60 * 60,
+        )
+
+    ;(signedImages ?? []).forEach(
+      (entry, index) => {
+        if (entry.signedUrl) {
+          missionImageUrlMap.set(
+            missionImagePaths[index],
+            entry.signedUrl,
+          )
         }
-      }),
+      },
     )
+  }
+
+  const missionsWithImages = missions.map(
+    (mission) => ({
+      ...mission,
+      imageUrl: mission.imagePath
+        ? (
+            missionImageUrlMap.get(
+              mission.imagePath,
+            ) ?? '/mission-default.jpg'
+          )
+        : '/mission-default.jpg',
+    }),
+  )
 
  const visibleMissions =
     activeFilter === 'clear'
