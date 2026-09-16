@@ -97,6 +97,19 @@ type ConnectionPerson = {
   avatarUrl: string | null
 }
 
+type MeCache = {
+  name: string
+  score: number
+  connections: number
+  connectionPeople: ConnectionPerson[]
+  rank: number | null
+  participantId: string | null
+  eventId: string | null
+  avatarUrl: string | null
+}
+
+let meCache: MeCache | null = null
+
 export default function Me() {
   const supabase = useMemo(
     () => createClient(),
@@ -113,16 +126,18 @@ export default function Me() {
     useState(false)
 
   const [name, setName] =
-    useState('My Page')
+    useState(() => meCache?.name ?? 'My Page')
 
   const [score, setScore] =
-    useState(0)
+    useState(() => meCache?.score ?? 0)
 
   const [connections, setConnections] =
-    useState(0)
+    useState(() => meCache?.connections ?? 0)
 
   const [connectionPeople, setConnectionPeople] =
-    useState<ConnectionPerson[]>([])
+    useState<ConnectionPerson[]>(
+      () => meCache?.connectionPeople ?? [],
+    )
 
   const [showConnections, setShowConnections] =
     useState(false)
@@ -131,16 +146,24 @@ export default function Me() {
     useState(false)
 
   const [rank, setRank] =
-    useState<number | null>(null)
+    useState<number | null>(
+      () => meCache?.rank ?? null,
+    )
 
   const [participantId, setParticipantId] =
-    useState<string | null>(null)
+    useState<string | null>(
+      () => meCache?.participantId ?? null,
+    )
 
   const [eventId, setEventId] =
-    useState<string | null>(null)
+    useState<string | null>(
+      () => meCache?.eventId ?? null,
+    )
 
   const [avatarUrl, setAvatarUrl] =
-    useState<string | null>(null)
+    useState<string | null>(
+      () => meCache?.avatarUrl ?? null,
+    )
 
   const [avatarUploading, setAvatarUploading] =
     useState(false)
@@ -267,11 +290,33 @@ export default function Me() {
     })()
   }, [supabase])
 
+  useEffect(() => {
+    meCache = {
+      name,
+      score,
+      connections,
+      connectionPeople,
+      rank,
+      participantId,
+      eventId,
+      avatarUrl,
+    }
+  }, [
+    avatarUrl,
+    connectionPeople,
+    connections,
+    eventId,
+    name,
+    participantId,
+    rank,
+    score,
+  ])
+
   async function openConnections() {
     if (!participantId) return
 
     setShowConnections(true)
-    setConnectionsLoading(true)
+    setConnectionsLoading(connectionPeople.length === 0)
 
     try {
       const [{ data: rowsA, error: errorA }, { data: rowsB, error: errorB }] =

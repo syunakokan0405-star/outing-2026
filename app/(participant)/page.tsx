@@ -13,7 +13,6 @@ import {
 import PointTop5 from '@/components/PointTop5'
 import { createClient } from '@/lib/supabase/server'
 
-export const dynamic = 'force-dynamic'
 
 type MissionRow = {
   id: string

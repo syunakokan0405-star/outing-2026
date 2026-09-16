@@ -14,6 +14,13 @@ type RankRow = {
   avatar_url: string
 }
 
+type PointTop5Cache = {
+  rows: RankRow[]
+  rankingBackgroundUrl: string
+}
+
+let pointTop5Cache: PointTop5Cache | null = null
+
 export default function PointTop5() {
   const supabase = useMemo(() => createClient(), [])
   const [rows, setRows] = useState<RankRow[]>([])
@@ -55,6 +62,10 @@ const { data: eventData } = await supabase
 const rankingBackgroundPath =
   eventData?.ranking_background_path ?? ''
 
+let nextRankingBackgroundUrl =
+  pointTop5Cache?.rankingBackgroundUrl ??
+  '/mission-default.jpg'
+
 if (rankingBackgroundPath) {
   const { data: backgroundData } = await supabase.storage
     .from('outing-photos')
@@ -64,12 +75,13 @@ if (rankingBackgroundPath) {
     )
 
   if (backgroundData?.signedUrl) {
-    setRankingBackgroundUrl(
-      `${backgroundData.signedUrl}&t=${Date.now()}`,
-    )
+    nextRankingBackgroundUrl =
+      `${backgroundData.signedUrl}&t=${Date.now()}`
+    setRankingBackgroundUrl(nextRankingBackgroundUrl)
   }
 } else {
-  setRankingBackgroundUrl('/mission-default.jpg')
+  nextRankingBackgroundUrl = '/mission-default.jpg'
+  setRankingBackgroundUrl(nextRankingBackgroundUrl)
 }
     const { data, error: rankError } =
       await supabase.rpc('get_event_top5', {
@@ -90,6 +102,10 @@ if (rankingBackgroundPath) {
     }))
 
     if (!rankRows.length) {
+      pointTop5Cache = {
+        rows: [],
+        rankingBackgroundUrl: nextRankingBackgroundUrl,
+      }
       setRows([])
       setLoading(false)
       return
@@ -144,21 +160,25 @@ if (avatarPaths.length) {
   })
 }
 
-    setRows(
-      rankRows.map((row: any) => {
-        const avatarPath =
-          avatarPathMap.get(row.participant_id) ?? null
+    const nextRows = rankRows.map((row: any) => {
+      const avatarPath =
+        avatarPathMap.get(row.participant_id) ?? null
 
-        return {
-          ...row,
-          avatar_path: avatarPath,
-          avatar_url: avatarPath
-            ? avatarUrlMap.get(avatarPath) ?? ''
-            : '',
-        }
-      }),
-    )
+      return {
+        ...row,
+        avatar_path: avatarPath,
+        avatar_url: avatarPath
+          ? avatarUrlMap.get(avatarPath) ?? ''
+          : '',
+      }
+    })
 
+    pointTop5Cache = {
+      rows: nextRows,
+      rankingBackgroundUrl: nextRankingBackgroundUrl,
+    }
+
+    setRows(nextRows)
     setLoading(false)
   }, [supabase])
 
