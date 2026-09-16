@@ -426,6 +426,35 @@ export default function LivePosts({
 
     if (!confirmed) return
 
+    if (post.storage_provider === 'r2') {
+      const response = await fetch('/api/r2/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postId: post.id,
+        }),
+      })
+
+      if (!response.ok) {
+        const body = await response
+          .json()
+          .catch(() => ({
+            error: '投稿を削除できませんでした。',
+          }))
+
+        setError(
+          body?.error ??
+            '投稿を削除できませんでした。',
+        )
+        return
+      }
+
+      void load()
+      return
+    }
+
     const { error: deleteError } = await supabase.rpc(
       'delete_post',
       {
@@ -438,31 +467,20 @@ export default function LivePosts({
       return
     }
 
-    if (post.storage_provider === 'r2') {
-      const response = await fetch('/api/r2/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postId: post.id }),
-      })
-      if (!response.ok) {
-        setError(
-          '投稿は削除しましたが、R2画像ファイルを削除できませんでした。運営に確認してください。',
-        )
-      }
-    } else {
-      const { error: storageError } =
-        await supabase.storage
-          .from('outing-photos')
-          .remove([post.image_path])
-      if (storageError) {
-        setError(
-          '投稿は削除しましたが、画像ファイルを削除できませんでした。運営に確認してください。',
-        )
-      }
+    const { error: storageError } =
+      await supabase.storage
+        .from('outing-photos')
+        .remove([post.image_path])
+
+    if (storageError) {
+      setError(
+        '投稿は削除しましたが、画像ファイルを削除できませんでした。運営に確認してください。',
+      )
     }
 
     void load()
   }
+
   if (loading) {
     return (
       <section
