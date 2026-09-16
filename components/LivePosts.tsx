@@ -99,25 +99,43 @@ async function signedUrlMap(
 }
 
 async function r2ReadUrlMap(posts: PostRow[]) {
-  const entries = await Promise.all(
-    posts
-      .filter((post) => post.storage_provider === 'r2' && post.r2_object_key)
-      .map(async (post) => {
-        try {
-          const response = await fetch('/api/r2/read-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ postId: post.id }),
-          })
-          if (!response.ok) return [post.id, ''] as const
-          const data = (await response.json()) as { signedUrl?: string }
-          return [post.id, data.signedUrl ?? ''] as const
-        } catch {
-          return [post.id, ''] as const
-        }
+  const postIds = posts
+    .filter(
+      (post) =>
+        post.storage_provider === 'r2' &&
+        post.r2_object_key,
+    )
+    .map((post) => post.id)
+
+  if (!postIds.length) {
+    return new Map<string, string>()
+  }
+
+  try {
+    const response = await fetch('/api/r2/read-urls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        postIds,
       }),
-  )
-  return new Map<string, string>(entries)
+    })
+
+    if (!response.ok) {
+      return new Map<string, string>()
+    }
+
+    const data = (await response.json()) as {
+      urls?: Record<string, string>
+    }
+
+    return new Map<string, string>(
+      Object.entries(data.urls ?? {}),
+    )
+  } catch {
+    return new Map<string, string>()
+  }
 }
 
 export default function LivePosts({
