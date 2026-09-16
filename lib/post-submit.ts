@@ -16,8 +16,25 @@ export type SubmitPostResult = {
   clientRequestId: string
 }
 
+class R2UploadError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'R2UploadError'
+  }
+}
+
 function looksLikeNetworkError(error: unknown) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  // 診断中：
+  // R2への直接アップロード失敗は
+  // オフラインキューに隠さず画面へ出す。
+  if (error instanceof R2UploadError) {
+    return false
+  }
+
+  if (
+    typeof navigator !== 'undefined' &&
+    !navigator.onLine
+  ) {
     return true
   }
 
@@ -35,7 +52,8 @@ function errorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
     : String(
-        (error as { message?: string } | null)?.message ??
+        (error as { message?: string } | null)
+          ?.message ??
           error ??
           'Unknown error',
       )
@@ -44,28 +62,35 @@ function errorMessage(error: unknown) {
 async function uploadToR2(
   post: QueuedPost,
 ): Promise<string> {
-  const response = await fetch('/api/r2/upload-url', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const response = await fetch(
+    '/api/r2/upload-url',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        eventId: post.eventId,
+        participantId: post.participantId,
+        clientRequestId:
+          post.clientRequestId,
+      }),
     },
-    body: JSON.stringify({
-      eventId: post.eventId,
-      participantId: post.participantId,
-      clientRequestId: post.clientRequestId,
-    }),
-  })
+  )
 
   if (!response.ok) {
     const body = await response
       .json()
       .catch(() => ({
-        error: 'Could not create upload URL.',
+        error:
+          'Could not create upload URL.',
       }))
 
-    throw new Error(
-      body?.error ??
-        `Could not create upload URL (${response.status})`,
+    throw new R2UploadError(
+      `R2 PRESIGN ERROR: ${
+        body?.error ??
+        `HTTP ${response.status}`
+      }`,
     )
   }
 
@@ -75,27 +100,45 @@ async function uploadToR2(
   }
 
   if (!data.uploadUrl || !data.key) {
-    throw new Error('Invalid R2 upload response.')
+    throw new R2UploadError(
+      'R2 PRESIGN ERROR: Invalid upload response.',
+    )
   }
 
-  const uploadResponse = await fetch(
-    data.uploadUrl,
-    {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'image/webp',
+  let uploadResponse: Response
+
+  try {
+    uploadResponse = await fetch(
+      data.uploadUrl,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'image/webp',
+        },
+        body: post.imageBlob,
       },
-      body: post.imageBlob,
-    },
-  )
+    )
+  } catch (error) {
+    const original =
+      error instanceof Error
+        ? error.message
+        : String(error)
+
+    throw new R2UploadError(
+      `R2 PUT FETCH ERROR: ${original}`,
+    )
+  }
 
   if (!uploadResponse.ok) {
-    const errorText = await uploadResponse
-      .text()
-      .catch(() => '')
+    const errorText =
+      await uploadResponse
+        .text()
+        .catch(() => '')
 
-    throw new Error(
-      `R2 upload failed (${uploadResponse.status}): ${errorText}`,
+    throw new R2UploadError(
+      `R2 PUT HTTP ERROR ${uploadResponse.status}: ${
+        errorText || uploadResponse.statusText
+      }`,
     )
   }
 
@@ -106,9 +149,8 @@ async function sendQueuedPost(
   supabase: SupabaseClient,
   post: QueuedPost,
 ): Promise<string> {
-  // clientRequestIdから毎回同じR2 keyが発行されるため、
-  // オフライン再送でも別ファイルは作られない。
-  const r2ObjectKey = await uploadToR2(post)
+  const r2ObjectKey =
+    await uploadToR2(post)
 
   const { data, error: rpcError } =
     await supabase.rpc(
@@ -120,23 +162,17 @@ async function sendQueuedPost(
         p_client_request_id:
           post.clientRequestId,
         p_comment: post.comment,
-        p_visibility: post.visibility,
-        p_mention_ids: post.mentionIds,
+        p_visibility:
+          post.visibility,
+        p_mention_ids:
+          post.mentionIds,
         p_storage_provider: 'r2',
-        p_r2_object_key: r2ObjectKey,
+        p_r2_object_key:
+          r2ObjectKey,
       },
     )
 
   if (rpcError) {
-    /*
-     * RPCが失敗してもR2画像は即削除しない。
-     *
-     * DBへのレスポンスだけ通信切断した場合、
-     * 実際には投稿が作成済みの可能性がある。
-     *
-     * clientRequestIdによるRPCの冪等性と
-     * 固定R2 keyによって安全に再送できる。
-     */
     throw rpcError
   }
 
@@ -155,15 +191,14 @@ export async function submitPostReliably(
     lastError: null,
   }
 
-  // ネットワーク処理より先にIndexedDBへ保存。
-  // 投稿中に通信断・ブラウザ終了が起きても写真を失わない。
   await putPendingPost(queuedPost)
 
   try {
-    const postId = await sendQueuedPost(
-      supabase,
-      queuedPost,
-    )
+    const postId =
+      await sendQueuedPost(
+        supabase,
+        queuedPost,
+      )
 
     await removePendingPost(
       queuedPost.clientRequestId,
@@ -180,7 +215,8 @@ export async function submitPostReliably(
       await putPendingPost({
         ...queuedPost,
         status: 'pending',
-        lastError: errorMessage(error),
+        lastError:
+          errorMessage(error),
       })
 
       return {
@@ -191,8 +227,6 @@ export async function submitPostReliably(
       }
     }
 
-    // 権限・Mission終了などの恒久的エラーは
-    // 投稿画面にそのまま表示する。
     await removePendingPost(
       queuedPost.clientRequestId,
     )
@@ -210,21 +244,24 @@ export async function retryQueuedPost(
       ok: false as const,
       permanent: true as const,
       error: new Error(
-        post.lastError ?? '再送できません',
+        post.lastError ??
+          '再送できません',
       ),
     }
   }
 
   const next = {
     ...post,
-    attempts: post.attempts + 1,
+    attempts:
+      post.attempts + 1,
   }
 
   try {
-    const postId = await sendQueuedPost(
-      supabase,
-      next,
-    )
+    const postId =
+      await sendQueuedPost(
+        supabase,
+        next,
+      )
 
     await removePendingPost(
       post.clientRequestId,
@@ -235,11 +272,14 @@ export async function retryQueuedPost(
       postId,
     }
   } catch (error) {
-    if (!looksLikeNetworkError(error)) {
+    if (
+      !looksLikeNetworkError(error)
+    ) {
       await putPendingPost({
         ...next,
         status: 'failed',
-        lastError: errorMessage(error),
+        lastError:
+          errorMessage(error),
       })
 
       return {
@@ -252,7 +292,8 @@ export async function retryQueuedPost(
     await putPendingPost({
       ...next,
       status: 'pending',
-      lastError: errorMessage(error),
+      lastError:
+        errorMessage(error),
     })
 
     return {
