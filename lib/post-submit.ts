@@ -16,21 +16,7 @@ export type SubmitPostResult = {
   clientRequestId: string
 }
 
-class R2UploadError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'R2UploadError'
-  }
-}
-
 function looksLikeNetworkError(error: unknown) {
-  // 診断中：
-  // R2への直接アップロード失敗は
-  // オフラインキューに隠さず画面へ出す。
-  if (error instanceof R2UploadError) {
-    return false
-  }
-
   if (
     typeof navigator !== 'undefined' &&
     !navigator.onLine
@@ -86,11 +72,9 @@ async function uploadToR2(
           'Could not create upload URL.',
       }))
 
-    throw new R2UploadError(
-      `R2 PRESIGN ERROR: ${
-        body?.error ??
-        `HTTP ${response.status}`
-      }`,
+    throw new Error(
+      body?.error ??
+        `Could not create upload URL (${response.status})`,
     )
   }
 
@@ -100,34 +84,21 @@ async function uploadToR2(
   }
 
   if (!data.uploadUrl || !data.key) {
-    throw new R2UploadError(
-      'R2 PRESIGN ERROR: Invalid upload response.',
+    throw new Error(
+      'Invalid R2 upload response.',
     )
   }
 
-  let uploadResponse: Response
-
-  try {
-    uploadResponse = await fetch(
-      data.uploadUrl,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'image/webp',
-        },
-        body: post.imageBlob,
+  const uploadResponse = await fetch(
+    data.uploadUrl,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'image/webp',
       },
-    )
-  } catch (error) {
-    const original =
-      error instanceof Error
-        ? error.message
-        : String(error)
-
-    throw new R2UploadError(
-      `R2 PUT FETCH ERROR: ${original}`,
-    )
-  }
+      body: post.imageBlob,
+    },
+  )
 
   if (!uploadResponse.ok) {
     const errorText =
@@ -135,9 +106,10 @@ async function uploadToR2(
         .text()
         .catch(() => '')
 
-    throw new R2UploadError(
-      `R2 PUT HTTP ERROR ${uploadResponse.status}: ${
-        errorText || uploadResponse.statusText
+    throw new Error(
+      `R2 upload failed (${uploadResponse.status}): ${
+        errorText ||
+        uploadResponse.statusText
       }`,
     )
   }
@@ -149,6 +121,8 @@ async function sendQueuedPost(
   supabase: SupabaseClient,
   post: QueuedPost,
 ): Promise<string> {
+  // clientRequestIdから毎回同じR2 keyを使用するため、
+  // 再送されても別ファイルは作られない。
   const r2ObjectKey =
     await uploadToR2(post)
 
@@ -173,6 +147,15 @@ async function sendQueuedPost(
     )
 
   if (rpcError) {
+    /*
+     * RPC失敗時もR2画像は即削除しない。
+     *
+     * DBへのレスポンスだけ通信切断した場合、
+     * 実際には投稿作成済みの可能性がある。
+     *
+     * clientRequestIdによる冪等性と
+     * 固定R2 keyによって安全に再送できる。
+     */
     throw rpcError
   }
 
@@ -191,6 +174,8 @@ export async function submitPostReliably(
     lastError: null,
   }
 
+  // 通信開始前にIndexedDBへ保存。
+  // 通信断やブラウザ終了でも写真を失わない。
   await putPendingPost(queuedPost)
 
   try {
@@ -227,6 +212,8 @@ export async function submitPostReliably(
       }
     }
 
+    // 権限エラー・Mission終了など、
+    // 再送しても直らないエラーはキューから削除。
     await removePendingPost(
       queuedPost.clientRequestId,
     )
