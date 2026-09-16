@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -162,7 +162,7 @@ export default function LivePosts({
 
     if (!authUser) {
       setError(
-        'ログイン情報がありません。先に名前を選択してください。',
+        '繝ｭ繧ｰ繧､繝ｳ諠・ｱ縺後≠繧翫∪縺帙ｓ縲ょ・縺ｫ蜷榊燕繧帝∈謚槭＠縺ｦ縺上□縺輔＞縲・,
       )
       setLoading(false)
       return
@@ -178,7 +178,7 @@ export default function LivePosts({
       .maybeSingle()
 
     if (participantError || !participant) {
-      setError('参加者情報を取得できませんでした。')
+      setError('蜿ょ刈閠・ュ蝣ｱ繧貞叙蠕励〒縺阪∪縺帙ｓ縺ｧ縺励◆縲・)
       setLoading(false)
       return
     }
@@ -209,7 +209,7 @@ export default function LivePosts({
       .eq('event_id', participant.event_id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
-      .limit(mode === 'stream' ? 80 : 120)
+      .limit(mode === 'stream' ? 30 : 120)
 
     if (mode === 'stream') {
       query = query.eq('visibility', 'stream')
@@ -435,7 +435,7 @@ export default function LivePosts({
   async function downloadPhoto(post: UserFeedItem) {
     if (post.storage_provider === 'r2') {
       if (!post.signedUrl) {
-        setError('ダウンロードURLを作成できませんでした。')
+        setError('繝繧ｦ繝ｳ繝ｭ繝ｼ繝蔚RL繧剃ｽ懈・縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲・)
         return
       }
       window.location.assign(post.signedUrl)
@@ -450,7 +450,7 @@ export default function LivePosts({
     if (downloadError || !data?.signedUrl) {
       setError(
         downloadError?.message ??
-          'ダウンロードURLを作成できませんでした。',
+          '繝繧ｦ繝ｳ繝ｭ繝ｼ繝蔚RL繧剃ｽ懈・縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲・,
       )
       return
     }
@@ -461,14 +461,14 @@ export default function LivePosts({
     if (!post.mine) return
 
     const next = window.prompt(
-      'コメントを編集（30文字まで）',
+      '繧ｳ繝｡繝ｳ繝医ｒ邱ｨ髮・ｼ・0譁・ｭ励∪縺ｧ・・,
       post.comment ?? '',
     )
 
     if (next === null) return
 
     if (next.length > 30) {
-      setError('コメントは30文字までです。')
+      setError('繧ｳ繝｡繝ｳ繝医・30譁・ｭ励∪縺ｧ縺ｧ縺吶・)
       return
     }
 
@@ -491,7 +491,7 @@ export default function LivePosts({
     if (!post.mine) return
 
     const confirmed = window.confirm(
-      'この写真を削除しますか？ 初回CLEARで獲得したポイントも取り消されます。',
+      '縺薙・蜀咏悄繧貞炎髯､縺励∪縺吶°・・蛻晏屓CLEAR縺ｧ迯ｲ蠕励＠縺溘・繧､繝ｳ繝医ｂ蜿悶ｊ豸医＆繧後∪縺吶・,
     )
 
     if (!confirmed) return
@@ -511,12 +511,12 @@ export default function LivePosts({
         const body = await response
           .json()
           .catch(() => ({
-            error: '投稿を削除できませんでした。',
+            error: '謚慕ｨｿ繧貞炎髯､縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲・,
           }))
 
         setError(
           body?.error ??
-            '投稿を削除できませんでした。',
+            '謚慕ｨｿ繧貞炎髯､縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲・,
         )
         return
       }
@@ -544,7 +544,7 @@ export default function LivePosts({
 
     if (storageError) {
       setError(
-        '投稿は削除しましたが、画像ファイルを削除できませんでした。運営に確認してください。',
+        '謚慕ｨｿ縺ｯ蜑企勁縺励∪縺励◆縺後∫判蜒上ヵ繧｡繧､繝ｫ繧貞炎髯､縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆縲る°蝟ｶ縺ｫ遒ｺ隱阪＠縺ｦ縺上□縺輔＞縲・,
       )
     }
 
@@ -564,7 +564,7 @@ export default function LivePosts({
           className="uiMuted"
           style={{ margin: 0 }}
         >
-          写真を読み込み中...
+          蜀咏悄繧定ｪｭ縺ｿ霎ｼ縺ｿ荳ｭ...
         </p>
       </section>
     )
@@ -588,7 +588,7 @@ export default function LivePosts({
             fontSize: 17,
           }}
         >
-          表示できませんでした
+          陦ｨ遉ｺ縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆
         </h2>
 
         <p className="uiMuted">
@@ -603,7 +603,7 @@ export default function LivePosts({
             marginTop: 10,
           }}
         >
-          再読み込み
+          蜀崎ｪｭ縺ｿ霎ｼ縺ｿ
         </button>
       </section>
     )
@@ -633,15 +633,15 @@ export default function LivePosts({
           }}
         >
           {mode === 'stream'
-            ? 'Streamはまだ空です'
-            : 'Galleryはまだ空です'}
+            ? 'Stream縺ｯ縺ｾ縺遨ｺ縺ｧ縺・
+            : 'Gallery縺ｯ縺ｾ縺遨ｺ縺ｧ縺・}
         </h2>
 
         <p
           className="uiMuted"
           style={{ margin: 0 }}
         >
-          最初の写真を投稿してみよう。
+          譛蛻昴・蜀咏悄繧呈兜遞ｿ縺励※縺ｿ繧医≧縲・
         </p>
       </section>
     )
@@ -667,7 +667,7 @@ export default function LivePosts({
     >
       {items.map((item) => {
         /*
-         * 運営投稿
+         * 驕句霧謚慕ｨｿ
          */
         if (item.kind === 'admin') {
           return (
@@ -688,7 +688,7 @@ export default function LivePosts({
                 >
                   <img
                     src={item.signedUrl}
-                    alt="運営からの投稿写真"
+                    alt="驕句霧縺九ｉ縺ｮ謚慕ｨｿ蜀咏悄"
                     style={{
                       width: '100%',
                       height: '100%',
@@ -798,7 +798,7 @@ export default function LivePosts({
                   >
                     {item.admin_users
                       ?.display_name ??
-                      '運営'}
+                      '驕句霧'}
                   </strong>
 
                   <span>
@@ -821,13 +821,13 @@ export default function LivePosts({
         }
 
         /*
-         * 参加者投稿
+         * 蜿ょ刈閠・兜遞ｿ
          */
         const post = item
 
         /*
-         * Galleryでは写真を主役にした
-         * 2列グリッドだけ表示
+         * Gallery縺ｧ縺ｯ蜀咏悄繧剃ｸｻ蠖ｹ縺ｫ縺励◆
+         * 2蛻励げ繝ｪ繝・ラ縺縺題｡ｨ遉ｺ
          */
         if (mode === 'gallery') {
           return (
@@ -850,8 +850,8 @@ export default function LivePosts({
                   alt={`${
                     post.participants
                       ?.name ??
-                    '参加者'
-                  }の投稿写真`}
+                    '蜿ょ刈閠・
+                  }縺ｮ謚慕ｨｿ蜀咏悄`}
                   style={{
                     width: '100%',
                     height: '100%',
@@ -873,7 +873,7 @@ export default function LivePosts({
                     textAlign: 'center',
                   }}
                 >
-                  写真を表示できませんでした
+                  蜀咏悄繧定｡ｨ遉ｺ縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆
                 </div>
               )}
 
@@ -946,7 +946,7 @@ export default function LivePosts({
               overflow: 'hidden',
             }}
           >
-            {/* 投稿者 */}
+            {/* 謚慕ｨｿ閠・*/}
             <div
               style={{
                 display: 'flex',
@@ -988,7 +988,7 @@ export default function LivePosts({
                   {post.avatarUrl ? (
                     <img
                       src={post.avatarUrl}
-                      alt={`${post.participants?.name ?? '参加者'}のプロフィール画像`}
+                      alt={`${post.participants?.name ?? '蜿ょ刈閠・}縺ｮ繝励Ο繝輔ぅ繝ｼ繝ｫ逕ｻ蜒汁}
                       style={{
                         width: '100%',
                         height: '100%',
@@ -1060,7 +1060,7 @@ export default function LivePosts({
               )}
             </div>
 
-            {/* 写真 */}
+            {/* 蜀咏悄 */}
             <div
               style={{
                 position: 'relative',
@@ -1074,8 +1074,8 @@ export default function LivePosts({
                   alt={`${
                     post.participants
                       ?.name ??
-                    '参加者'
-                  }の投稿写真`}
+                    '蜿ょ刈閠・
+                  }縺ｮ謚慕ｨｿ蜀咏悄`}
                   style={{
                     width: '100%',
                     maxHeight: 620,
@@ -1094,7 +1094,7 @@ export default function LivePosts({
                     fontSize: 12,
                   }}
                 >
-                  写真を表示できませんでした
+                  蜀咏悄繧定｡ｨ遉ｺ縺ｧ縺阪∪縺帙ｓ縺ｧ縺励◆
                 </div>
               )}
 
@@ -1148,7 +1148,7 @@ export default function LivePosts({
               )}
             </div>
 
-         {/* 投稿情報 */}
+         {/* 謚慕ｨｿ諠・ｱ */}
 <div
   style={{
     padding: '9px 14px 10px',
@@ -1158,7 +1158,7 @@ export default function LivePosts({
     WebkitBackdropFilter: 'blur(16px)',
   }}
 >
-  {/* アクション */}
+  {/* 繧｢繧ｯ繧ｷ繝ｧ繝ｳ */}
   <div
     style={{
       display: 'flex',
@@ -1173,8 +1173,8 @@ export default function LivePosts({
       onClick={() => void toggleHeart(post)}
       title={
         post.mine
-          ? '自分の投稿にはハートできません'
-          : 'ハート'
+          ? '閾ｪ蛻・・謚慕ｨｿ縺ｫ縺ｯ繝上・繝医〒縺阪∪縺帙ｓ'
+          : '繝上・繝・
       }
       style={{
         border: 0,
@@ -1198,7 +1198,7 @@ export default function LivePosts({
     <button
       type="button"
       onClick={() => void downloadPhoto(post)}
-      title="写真を保存"
+      title="蜀咏悄繧剃ｿ晏ｭ・
       style={{
         border: 0,
         background: 'transparent',
@@ -1229,7 +1229,7 @@ export default function LivePosts({
     </span>
   </div>
 
-  {/* コメント */}
+  {/* 繧ｳ繝｡繝ｳ繝・*/}
   {post.comment && (
     <p
       style={{
@@ -1243,7 +1243,7 @@ export default function LivePosts({
     </p>
   )}
 
-  {/* メンション */}
+  {/* 繝｡繝ｳ繧ｷ繝ｧ繝ｳ */}
   {!!post.post_mentions?.length && (
     <div
       style={{
@@ -1270,12 +1270,12 @@ export default function LivePosts({
               mention.participants?.name,
           )
           .filter(Boolean)
-          .join(' ・ ')}
+          .join(' 繝ｻ ')}
       </span>
     </div>
   )}
 
-  {/* 自分の投稿操作 */}
+  {/* 閾ｪ蛻・・謚慕ｨｿ謫堺ｽ・*/}
   {post.mine && (
     <div
       style={{
@@ -1303,7 +1303,7 @@ export default function LivePosts({
         }}
       >
         <Pencil size={12} strokeWidth={1.7} />
-        コメント編集
+        繧ｳ繝｡繝ｳ繝育ｷｨ髮・
       </button>
 
       <button
@@ -1322,7 +1322,7 @@ export default function LivePosts({
         }}
       >
                    <Trash2 size={12} strokeWidth={1.7} />
-        削除
+        蜑企勁
       </button>
     </div>
   )}
