@@ -1479,7 +1479,7 @@ if (drop) {
           PUBLISH
       ========================= */}
 
-      {stage === "publish" && capture && (
+      {stage === "publish" && capture && !posting && (
         <section
           className="participantContent"
           style={{
@@ -1723,6 +1723,129 @@ if (drop) {
                 ? "投稿中..."
                 : "POSTする"}
             </button>
+          </div>
+        </section>
+      )}
+
+      {/* =========================
+          UPLOADING
+      ========================= */}
+
+      {stage === "publish" && capture && posting && (
+        <section
+          className="participantContent"
+          aria-live="polite"
+          aria-busy="true"
+          style={{
+            minHeight: "100dvh",
+            display: "grid",
+            placeItems: "center",
+            paddingTop: 30,
+            paddingBottom: 30,
+          }}
+        >
+          <div
+            className="glassCardStrong"
+            style={{
+              width: "100%",
+              padding: "48px 22px",
+              textAlign: "center",
+            }}
+          >
+            <p
+              className="outingSerifEn"
+              style={{
+                margin: 0,
+                color: "rgba(255,255,255,.44)",
+                fontSize: 9,
+                letterSpacing: ".20em",
+              }}
+            >
+              OUTING 2026
+            </p>
+
+            <div
+              aria-hidden="true"
+              style={{
+                width: 64,
+                height: 64,
+                margin: "28px auto 0",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(190,165,255,.18)",
+                }}
+              />
+              <div
+                className="outingUploadSpinner"
+                style={{
+                  position: "absolute",
+                  inset: 5,
+                  borderRadius: "50%",
+                  border: "2px solid rgba(218,202,255,.16)",
+                  borderTopColor: "#dacaff",
+                }}
+              />
+            </div>
+
+            <h1
+              className="outingSerifEn"
+              style={{
+                margin: "24px 0 0",
+                color: "#fff",
+                fontSize: 29,
+                fontWeight: 500,
+                letterSpacing: ".10em",
+              }}
+            >
+              UPLOADING
+            </h1>
+
+            <p
+              className="outingSans"
+              style={{
+                margin: "17px auto 0",
+                maxWidth: 310,
+                color: "rgba(255,255,255,.68)",
+                fontSize: 13,
+                lineHeight: 1.8,
+              }}
+            >
+              写真を送信しています…
+            </p>
+
+            <p
+              className="outingSans"
+              style={{
+                margin: "5px auto 0",
+                color: "rgba(255,255,255,.36)",
+                fontSize: 10,
+                lineHeight: 1.7,
+              }}
+            >
+              画面を閉じずにお待ちください
+            </p>
+
+            <style jsx>{`
+              @keyframes outingUploadSpin {
+                to {
+                  transform: rotate(360deg);
+                }
+              }
+              .outingUploadSpinner {
+                animation: outingUploadSpin 0.85s linear infinite;
+              }
+              @media (prefers-reduced-motion: reduce) {
+                .outingUploadSpinner {
+                  animation-duration: 2s;
+                }
+              }
+            `}</style>
           </div>
         </section>
       )}
