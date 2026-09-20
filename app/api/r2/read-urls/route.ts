@@ -26,18 +26,19 @@ export async function POST(request: Request) {
     const body = await request.json()
 
     const postIds = Array.isArray(body.postIds)
-      ? [...new Set(
-          body.postIds
-            .map((id: unknown) => String(id))
-            .filter(Boolean),
-        )]
+      ? [
+          ...new Set(
+            body.postIds
+              .map((id: unknown) => String(id))
+              .filter(Boolean),
+          ),
+        ]
       : []
 
     if (!postIds.length) {
       return NextResponse.json({ urls: {} })
     }
 
-    // Stream / Gallery の上限より少し余裕を持たせる
     if (postIds.length > 150) {
       return NextResponse.json(
         { error: 'Too many post IDs.' },
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
       await supabase
         .from('posts')
         .select(
-          'id,storage_provider,r2_object_key,deleted_at',
+          'id,storage_provider,r2_object_key,r2_thumbnail_key,deleted_at',
         )
         .in('id', postIds)
         .is('deleted_at', null)
@@ -69,11 +70,21 @@ export async function POST(request: Request) {
 
     const entries = await Promise.all(
       (posts ?? [])
-        .filter((post) => post.r2_object_key)
+        .filter(
+          (post) =>
+            post.r2_thumbnail_key ||
+            post.r2_object_key,
+        )
         .map(async (post) => {
+          // 新投稿 → 480pxサムネ
+          // 旧投稿 → 元画像へフォールバック
+          const displayKey =
+            post.r2_thumbnail_key ??
+            post.r2_object_key
+
           const command = new GetObjectCommand({
             Bucket: R2_BUCKET_NAME,
-            Key: post.r2_object_key,
+            Key: displayKey,
           })
 
           const signedUrl = await getSignedUrl(

@@ -36,7 +36,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // UUID形式だけ許可
     const uuidPattern =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -65,24 +64,41 @@ export async function POST(request: Request) {
       );
     }
 
-    // 同じ投稿の再送では必ず同じR2キーを使う
-    const key =
-      `posts/${eventId}/${participantId}/` +
-      `${clientRequestId}.webp`;
+    // clientRequestId固定なので、オフライン再送でも同じキーになる
+    const baseKey =
+      `posts/${eventId}/${participantId}/${clientRequestId}`;
 
-    const command = new PutObjectCommand({
+    const key = `${baseKey}.webp`;
+    const thumbnailKey = `${baseKey}-thumb.webp`;
+
+    const mainCommand = new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,
       Key: key,
       ContentType: "image/webp",
     });
 
-    const uploadUrl = await getSignedUrl(r2, command, {
-      expiresIn: 300,
+    const thumbnailCommand = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: thumbnailKey,
+      ContentType: "image/webp",
     });
+
+    // 署名URLを並列生成
+    const [uploadUrl, thumbnailUploadUrl] =
+      await Promise.all([
+        getSignedUrl(r2, mainCommand, {
+          expiresIn: 300,
+        }),
+        getSignedUrl(r2, thumbnailCommand, {
+          expiresIn: 300,
+        }),
+      ]);
 
     return NextResponse.json({
       uploadUrl,
       key,
+      thumbnailUploadUrl,
+      thumbnailKey,
     });
   } catch (error) {
     console.error("R2 upload URL error:", error);

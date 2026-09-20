@@ -11,6 +11,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import PersistentPostImage from '@/components/PersistentPostImage'
 
 type Mode = 'stream' | 'gallery'
 
@@ -241,7 +242,7 @@ export default function LivePosts({
       .eq('event_id', participant.event_id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
-      .limit(mode === 'stream' ? 30 : 120)
+      .limit(mode === 'stream' ? 12 : 120)
 
     if (mode === 'stream') {
       query = query.eq('visibility', 'stream')
@@ -351,7 +352,7 @@ export default function LivePosts({
     )
 
     const nextHasMore =
-      mode === 'stream' && rows.length === 30
+      mode === 'stream' && rows.length === 12
 
     livePostsCache.set(cacheKey, {
       items: merged,
@@ -392,7 +393,7 @@ export default function LivePosts({
         .is('deleted_at', null)
         .lt('created_at', oldest.created_at)
         .order('created_at', { ascending: false })
-        .limit(30)
+        .limit(12)
 
       if (moreError) {
         setError(moreError.message)
@@ -426,7 +427,7 @@ export default function LivePosts({
         return [...current, ...nextItems.filter((item) => !known.has(`participant:${item.id}`))]
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       })
-      setHasMore(rows.length === 30)
+      setHasMore(rows.length === 12)
     } finally {
       setLoadingMore(false)
     }
@@ -704,12 +705,37 @@ export default function LivePosts({
 
   async function downloadPhoto(post: UserFeedItem) {
     if (post.storage_provider === 'r2') {
-      if (!post.signedUrl) {
+      try {
+        const response = await fetch('/api/r2/read-url', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            postId: post.id,
+          }),
+        })
+
+        if (!response.ok) {
+          setError('ダウンロードURLを作成できませんでした。')
+          return
+        }
+
+        const data = (await response.json()) as {
+          signedUrl?: string
+        }
+
+        if (!data.signedUrl) {
+          setError('ダウンロードURLを作成できませんでした。')
+          return
+        }
+
+        window.location.assign(data.signedUrl)
+        return
+      } catch {
         setError('ダウンロードURLを作成できませんでした。')
         return
       }
-      window.location.assign(post.signedUrl)
-      return
     }
 
     const { data, error: downloadError } =
@@ -1115,7 +1141,8 @@ export default function LivePosts({
               }}
             >
               {post.signedUrl ? (
-                <img
+                <PersistentPostImage
+                  postId={post.id}
                   src={post.signedUrl}
                   alt={`${
                     post.participants
@@ -1339,7 +1366,8 @@ export default function LivePosts({
               }}
             >
               {post.signedUrl ? (
-                <img
+                <PersistentPostImage
+                  postId={post.id}
                   src={post.signedUrl}
                   alt={`${
                     post.participants
