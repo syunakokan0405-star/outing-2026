@@ -379,6 +379,47 @@ export default function AdminMissions() {
     await loadDrops()
   }
 
+  async function deleteDrop(drop: DropRow) {
+    setMessage('')
+    setError('')
+
+    const confirmed = window.confirm(
+      `Drop #${drop.drop_number} を完全に削除しますか？\n\nこのDropのMissionと配布データも削除されます。\n過去の投稿とポイント履歴は残ります。\n\nこの操作は元に戻せません。`
+    )
+
+    if (!confirmed) return
+
+    const finalConfirmed = window.confirm(
+      `本当に Drop #${drop.drop_number} を削除しますか？`
+    )
+
+    if (!finalConfirmed) return
+
+    setBusyDropId(drop.id)
+
+    const { error: rpcError } = await supabase.rpc(
+      'admin_delete_mission_drop',
+      {
+        p_drop_id: drop.id,
+      }
+    )
+
+    if (rpcError) {
+      setError(rpcError.message)
+      setBusyDropId(null)
+      return
+    }
+
+    if (editingDropId === drop.id) {
+      setEditingDropId(null)
+      setDraftDropNumber('')
+    }
+
+    setMessage(`Drop #${drop.drop_number} を削除しました。`)
+    setBusyDropId(null)
+    await loadDrops()
+  }
+
   async function toggleDropStatus(drop: DropRow) {
     const nextStatus =
       drop.status === 'published'
@@ -1126,6 +1167,23 @@ export default function AdminMissions() {
                             : published
                               ? '停止'
                               : '再公開'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void deleteDrop(drop)}
+                          disabled={busyDropId === drop.id}
+                          style={{
+                            padding: '9px 13px',
+                            borderRadius: 10,
+                            border: '1px solid rgba(248,113,113,.20)',
+                            background: 'rgba(248,113,113,.07)',
+                            color: '#fca5a5',
+                            fontWeight: 700,
+                            cursor: busyDropId === drop.id ? 'default' : 'pointer',
+                          }}
+                        >
+                          {busyDropId === drop.id ? '処理中...' : '削除'}
                         </button>
                       </div>
                     </div>
