@@ -74,6 +74,9 @@ export default function AdminMissions() {
     }))
   )
 
+  const [commonMissions, setCommonMissions] = useState<MissionForm[]>([])
+  const [commonMissionImages, setCommonMissionImages] = useState<MissionImage[]>([])
+
   const [drops, setDrops] = useState<DropRow[]>([])
 
   const [creating, setCreating] = useState(false)
@@ -147,6 +150,96 @@ export default function AdminMissions() {
     )
   }
 
+  function addCommonMission() {
+    setCommonMissions((current) => [
+      ...current,
+      {
+        title: '',
+        difficulty: 'easy',
+        points: 10,
+        required_mentions: 1,
+      },
+    ])
+    setCommonMissionImages((current) => [
+      ...current,
+      {
+        file: null,
+        previewUrl: null,
+      },
+    ])
+  }
+
+  function updateCommonMission(
+    index: number,
+    field: keyof MissionForm,
+    value: string | number
+  ) {
+    setCommonMissions((current) =>
+      current.map((mission, i) =>
+        i === index
+          ? {
+              ...mission,
+              [field]: value,
+            }
+          : mission
+      )
+    )
+  }
+
+  function selectCommonMissionImage(index: number, file: File | null) {
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('画像ファイルを選択してください。')
+      return
+    }
+
+    setError('')
+
+    setCommonMissionImages((current) =>
+      current.map((image, i) => {
+        if (i !== index) return image
+
+        if (image.previewUrl) {
+          URL.revokeObjectURL(image.previewUrl)
+        }
+
+        return {
+          file,
+          previewUrl: URL.createObjectURL(file),
+        }
+      })
+    )
+  }
+
+  function removeCommonMissionImage(index: number) {
+    setCommonMissionImages((current) =>
+      current.map((image, i) => {
+        if (i !== index) return image
+
+        if (image.previewUrl) {
+          URL.revokeObjectURL(image.previewUrl)
+        }
+
+        return {
+          file: null,
+          previewUrl: null,
+        }
+      })
+    )
+  }
+
+  function removeCommonMission(index: number) {
+    setCommonMissionImages((current) => {
+      const image = current[index]
+      if (image?.previewUrl) {
+        URL.revokeObjectURL(image.previewUrl)
+      }
+      return current.filter((_, i) => i !== index)
+    })
+    setCommonMissions((current) => current.filter((_, i) => i !== index))
+  }
+
   async function uploadMissionImage(
     index: number,
     file: File,
@@ -165,6 +258,38 @@ export default function AdminMissions() {
 
     const path =
       `mission-backgrounds/${eventId}/${uploadKey}-${slot}.${extension}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('outing-photos')
+      .upload(path, file, {
+        upsert: false,
+        contentType: file.type || undefined,
+        cacheControl: '3600',
+      })
+
+    if (uploadError) {
+      throw uploadError
+    }
+
+    return path
+  }
+
+  async function uploadCommonMissionImage(
+    index: number,
+    file: File,
+    uploadKey: string
+  ) {
+    if (!eventId) {
+      throw new Error('EVENT IDが設定されていません。')
+    }
+
+    const extension =
+      file.name.split('.').pop()?.toLowerCase() ||
+      file.type.split('/').pop() ||
+      'jpg'
+
+    const path =
+      `mission-backgrounds/${eventId}/${uploadKey}-COMMON-${index + 1}.${extension}`
 
     const { error: uploadError } = await supabase.storage
       .from('outing-photos')
@@ -239,12 +364,17 @@ export default function AdminMissions() {
     }
 
     if (missions.some((mission) => !mission.title.trim())) {
-      setError('Mission名をすべて入力してください。')
+      setError('3分割Mission名をすべて入力してください。')
+      return
+    }
+
+    if (commonMissions.some((mission) => !mission.title.trim())) {
+      setError('共通Mission名をすべて入力してください。')
       return
     }
 
     if (
-      missions.some(
+      [...missions, ...commonMissions].some(
         (mission) =>
           mission.points < 0 ||
           mission.required_mentions < 0
@@ -255,7 +385,7 @@ export default function AdminMissions() {
     }
 
     const confirmed = window.confirm(
-      'この3つのMissionを参加者へ配布します。\n公開後すぐに参加者へ表示されます。\n\n実行しますか？'
+      `共通Mission ${commonMissions.length}件 + 3分割Mission 3件を参加者へ配布します。\n公開後すぐに参加者へ表示されます。\n\n実行しますか？`
     )
 
     if (!confirmed) return
@@ -281,11 +411,27 @@ export default function AdminMissions() {
         })
       )
 
+      const commonMissionsWithImages = await Promise.all(
+        commonMissions.map(async (mission, index) => {
+          const file = commonMissionImages[index]?.file
+
+          const imagePath = file
+            ? await uploadCommonMissionImage(index, file, uploadKey)
+            : null
+
+          return {
+            ...mission,
+            image_path: imagePath,
+          }
+        })
+      )
+
       const { data, error: rpcError } = await supabase.rpc(
         'create_mission_drop',
         {
           p_event_id: eventId,
           p_missions: missionsWithImages,
+          p_common_missions: commonMissionsWithImages,
         }
       )
 
@@ -307,6 +453,16 @@ export default function AdminMissions() {
           previewUrl: null,
         }))
       })
+
+      setCommonMissionImages((current) => {
+        current.forEach((image) => {
+          if (image.previewUrl) {
+            URL.revokeObjectURL(image.previewUrl)
+          }
+        })
+        return []
+      })
+      setCommonMissions([])
 
       await loadDrops()
     } catch (err) {
@@ -375,47 +531,6 @@ export default function AdminMissions() {
     )
     setEditingDropId(null)
     setDraftDropNumber('')
-    setBusyDropId(null)
-    await loadDrops()
-  }
-
-  async function deleteDrop(drop: DropRow) {
-    setMessage('')
-    setError('')
-
-    const confirmed = window.confirm(
-      `Drop #${drop.drop_number} を完全に削除しますか？\n\nこのDropのMissionと配布データも削除されます。\n過去の投稿とポイント履歴は残ります。\n\nこの操作は元に戻せません。`
-    )
-
-    if (!confirmed) return
-
-    const finalConfirmed = window.confirm(
-      `本当に Drop #${drop.drop_number} を削除しますか？`
-    )
-
-    if (!finalConfirmed) return
-
-    setBusyDropId(drop.id)
-
-    const { error: rpcError } = await supabase.rpc(
-      'admin_delete_mission_drop',
-      {
-        p_drop_id: drop.id,
-      }
-    )
-
-    if (rpcError) {
-      setError(rpcError.message)
-      setBusyDropId(null)
-      return
-    }
-
-    if (editingDropId === drop.id) {
-      setEditingDropId(null)
-      setDraftDropNumber('')
-    }
-
-    setMessage(`Drop #${drop.drop_number} を削除しました。`)
     setBusyDropId(null)
     await loadDrops()
   }
@@ -602,10 +717,307 @@ export default function AdminMissions() {
                   letterSpacing: '.16em',
                 }}
               >
-                NEW DROP
+                COMMON MISSIONS
               </p>
               <h2 style={{ margin: '5px 0 0', fontSize: 18 }}>
-                Mission設定
+                共通お題
+              </h2>
+              <p
+                style={{
+                  margin: '6px 0 0',
+                  color: 'rgba(255,255,255,.40)',
+                  fontSize: 11,
+                }}
+              >
+                このDropの参加者全員に配布されます。0件でもOKです。
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={addCommonMission}
+              disabled={creating}
+              style={{
+                padding: '9px 13px',
+                borderRadius: 10,
+                border: '1px solid rgba(167,139,250,.18)',
+                background: 'rgba(139,92,246,.12)',
+                color: '#c4b5fd',
+                fontWeight: 700,
+                cursor: creating ? 'default' : 'pointer',
+              }}
+            >
+              ＋ 共通お題を追加
+            </button>
+          </div>
+
+          {commonMissions.length === 0 ? (
+            <div
+              style={{
+                ...cardStyle,
+                padding: 18,
+                color: 'rgba(255,255,255,.40)',
+                fontSize: 11,
+              }}
+            >
+              共通お題はまだありません。このまま配布すると3分割お題のみになります。
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))',
+                gap: 12,
+              }}
+            >
+              {commonMissions.map((mission, index) => (
+                <div key={index} style={{ ...cardStyle, padding: 20 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      marginBottom: 20,
+                    }}
+                  >
+                    <div>
+                      <p
+                        className="outingSerifEn"
+                        style={{
+                          margin: 0,
+                          color: 'rgba(255,255,255,.34)',
+                          fontSize: 9,
+                          letterSpacing: '.14em',
+                        }}
+                      >
+                        COMMON
+                      </p>
+                      <h3
+                        className="outingSerifEn"
+                        style={{
+                          margin: '3px 0 0',
+                          fontSize: 24,
+                          fontWeight: 500,
+                        }}
+                      >
+                        #{String(index + 1).padStart(2, '0')}
+                      </h3>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={creating}
+                      onClick={() => removeCommonMission(index)}
+                      style={{
+                        padding: '7px 10px',
+                        borderRadius: 9,
+                        border: '1px solid rgba(248,113,113,.18)',
+                        background: 'rgba(248,113,113,.06)',
+                        color: '#fca5a5',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: creating ? 'default' : 'pointer',
+                      }}
+                    >
+                      削除
+                    </button>
+                  </div>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <div
+                      style={{
+                        position: 'relative',
+                        aspectRatio: '16 / 9',
+                        overflow: 'hidden',
+                        borderRadius: 14,
+                        border: '1px solid rgba(255,255,255,.08)',
+                        background: 'rgba(0,0,0,.18)',
+                      }}
+                    >
+                      <img
+                        src={
+                          commonMissionImages[index]?.previewUrl ??
+                          '/mission-default.jpg'
+                        }
+                        alt={`Common Mission ${index + 1} preview`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          display: 'block',
+                          opacity: commonMissionImages[index]?.previewUrl ? 1 : 0.58,
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background:
+                            'linear-gradient(180deg,transparent 45%,rgba(0,0,0,.58) 100%)',
+                          pointerEvents: 'none',
+                        }}
+                      />
+
+                      <label
+                        style={{
+                          position: 'absolute',
+                          left: 10,
+                          bottom: 10,
+                          padding: '8px 11px',
+                          borderRadius: 10,
+                          background: 'rgba(12,13,19,.78)',
+                          border: '1px solid rgba(255,255,255,.14)',
+                          color: '#fff',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          cursor: creating ? 'default' : 'pointer',
+                          backdropFilter: 'blur(10px)',
+                        }}
+                      >
+                        {commonMissionImages[index]?.file
+                          ? '画像を変更'
+                          : '画像を選択'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={creating}
+                          onChange={(e) =>
+                            selectCommonMissionImage(
+                              index,
+                              e.target.files?.[0] ?? null
+                            )
+                          }
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+
+                      {commonMissionImages[index]?.file && (
+                        <button
+                          type="button"
+                          disabled={creating}
+                          onClick={() => removeCommonMissionImage(index)}
+                          style={{
+                            position: 'absolute',
+                            right: 10,
+                            bottom: 10,
+                            padding: '8px 10px',
+                            borderRadius: 10,
+                            border: '1px solid rgba(255,255,255,.12)',
+                            background: 'rgba(12,13,19,.72)',
+                            color: 'rgba(255,255,255,.72)',
+                            fontSize: 10,
+                            cursor: creating ? 'default' : 'pointer',
+                          }}
+                        >
+                          既定画像
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <label style={{ fontSize: 11, color: 'rgba(255,255,255,.62)' }}>
+                    Mission名
+                    <input
+                      value={mission.title}
+                      onChange={(e) =>
+                        updateCommonMission(index, 'title', e.target.value)
+                      }
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 10,
+                      marginTop: 14,
+                    }}
+                  >
+                    <label style={{ fontSize: 11, color: 'rgba(255,255,255,.62)' }}>
+                      難易度
+                      <select
+                        value={mission.difficulty}
+                        onChange={(e) =>
+                          updateCommonMission(index, 'difficulty', e.target.value)
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="easy" style={{ color: '#111' }}>Easy</option>
+                        <option value="normal" style={{ color: '#111' }}>Normal</option>
+                        <option value="hard" style={{ color: '#111' }}>Hard</option>
+                      </select>
+                    </label>
+
+                    <label style={{ fontSize: 11, color: 'rgba(255,255,255,.62)' }}>
+                      得点
+                      <input
+                        type="number"
+                        min="0"
+                        value={mission.points}
+                        onChange={(e) =>
+                          updateCommonMission(index, 'points', Number(e.target.value))
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+                  </div>
+
+                  <label
+                    style={{
+                      display: 'block',
+                      marginTop: 14,
+                      fontSize: 11,
+                      color: 'rgba(255,255,255,.62)',
+                    }}
+                  >
+                    推奨メンション人数
+                    <input
+                      type="number"
+                      min="0"
+                      value={mission.required_mentions}
+                      onChange={(e) =>
+                        updateCommonMission(
+                          index,
+                          'required_mentions',
+                          Number(e.target.value)
+                        )
+                      }
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section style={{ marginBottom: 30 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'end',
+              gap: 16,
+              marginBottom: 14,
+            }}
+          >
+            <div>
+              <p
+                className="outingSerifEn"
+                style={{
+                  margin: 0,
+                  color: 'rgba(255,255,255,.34)',
+                  fontSize: 10,
+                  letterSpacing: '.16em',
+                }}
+              >
+                SPLIT MISSIONS
+              </p>
+              <h2 style={{ margin: '5px 0 0', fontSize: 18 }}>
+                3分割お題 A / B / C
               </h2>
             </div>
 
@@ -892,7 +1304,7 @@ export default function AdminMissions() {
                 fontSize: 11,
               }}
             >
-              A・B・Cへ均等に配布し、過去のMissionも考慮します。
+              共通お題は全員へ、A・B・Cは均等に配布し過去のMissionも考慮します。
             </p>
           </div>
 
@@ -1167,23 +1579,6 @@ export default function AdminMissions() {
                             : published
                               ? '停止'
                               : '再公開'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => void deleteDrop(drop)}
-                          disabled={busyDropId === drop.id}
-                          style={{
-                            padding: '9px 13px',
-                            borderRadius: 10,
-                            border: '1px solid rgba(248,113,113,.20)',
-                            background: 'rgba(248,113,113,.07)',
-                            color: '#fca5a5',
-                            fontWeight: 700,
-                            cursor: busyDropId === drop.id ? 'default' : 'pointer',
-                          }}
-                        >
-                          {busyDropId === drop.id ? '処理中...' : '削除'}
                         </button>
                       </div>
                     </div>
