@@ -1,5 +1,8 @@
+'use client'
+
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   BookOpen,
   Check,
@@ -10,16 +13,70 @@ import {
   Users,
   ArrowUpRight,
 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/client'
 
-export default async function Missions({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    filter?: string
-  }>
-}) {
-  const { filter } = await searchParams
+type MissionItem = {
+  assignmentId: string
+  cleared: boolean
+  id: string
+  title: string
+  difficulty: string | null
+  points: number
+  dropNumber: number
+  requiredMentions: number
+  imagePath: string | null
+  imageUrl: string
+}
+
+type MissionCache = {
+  savedAt: number
+  participantId: string
+  missions: Omit<MissionItem, 'imageUrl'>[]
+}
+
+const CACHE_PREFIX = 'outing-missions-v2'
+const MEMORY_CACHE = new Map<string, MissionCache>()
+
+function cacheKey(eventId: string, userId: string) {
+  return `${CACHE_PREFIX}:${eventId}:${userId}`
+}
+
+function readCache(eventId: string, userId: string): MissionCache | null {
+  const key = cacheKey(eventId, userId)
+  const memory = MEMORY_CACHE.get(key)
+  if (memory) return memory
+
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as MissionCache
+    if (!parsed || !Array.isArray(parsed.missions)) return null
+    MEMORY_CACHE.set(key, parsed)
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeCache(
+  eventId: string,
+  userId: string,
+  value: MissionCache,
+) {
+  const key = cacheKey(eventId, userId)
+  MEMORY_CACHE.set(key, value)
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Storage can be unavailable/full; memory cache still works.
+  }
+}
+
+export default function Missions() {
+  const supabase = useMemo(() => createClient(), [])
+  const searchParams = useSearchParams()
+  const filter = searchParams.get('filter')
 
   const activeFilter =
     filter === 'clear'
@@ -27,250 +84,252 @@ export default async function Missions({
       : filter === 'unclear'
         ? 'unclear'
         : 'all'
-  const supabase = await createClient()
-  const eventId = process.env.NEXT_PUBLIC_EVENT_ID
+
+  const eventId = process.env.NEXT_PUBLIC_EVENT_ID ?? ''
+
+  const [missions, setMissions] = useState<MissionItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!eventId) {
+      setError('NEXT_PUBLIC_EVENT_ID が設定されていません。')
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    async function attachImageUrls(
+      baseMissions: Omit<MissionItem, 'imageUrl'>[],
+    ) {
+      const missionImagePaths = [
+        ...new Set(
+          baseMissions
+            .map((mission) => mission.imagePath)
+            .filter((path): path is string => Boolean(path)),
+        ),
+      ]
+
+      const urlMap = new Map<string, string>()
+
+      if (missionImagePaths.length > 0) {
+        const { data: signedImages } = await supabase.storage
+          .from('outing-photos')
+          .createSignedUrls(missionImagePaths, 60 * 60)
+
+        ;(signedImages ?? []).forEach((entry, index) => {
+          if (entry.signedUrl) {
+            urlMap.set(missionImagePaths[index], entry.signedUrl)
+          }
+        })
+      }
+
+      return baseMissions.map((mission) => ({
+        ...mission,
+        imageUrl: mission.imagePath
+          ? urlMap.get(mission.imagePath) ?? '/mission-default.jpg'
+          : '/mission-default.jpg',
+      }))
+    }
+
+    async function load() {
+      // Authenticate first so user-specific mission data can never leak
+      // between accounts sharing the same browser/device.
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        window.location.replace('/join')
+        return
+      }
+
+      // 1) Show only this user's previous mission data immediately.
+      const cached = readCache(eventId, user.id)
+
+      if (cached?.missions?.length) {
+        const cachedWithImages = cached.missions.map((mission) => ({
+          ...mission,
+          // Do not persist expiring signed URLs.
+          imageUrl: '/mission-default.jpg',
+        }))
+
+        if (!cancelled) {
+          setMissions(cachedWithImages)
+          setLoading(false)
+        }
+
+        // Refresh only the image signatures without blocking the UI.
+        void attachImageUrls(cached.missions).then((withImages) => {
+          if (!cancelled) setMissions(withImages)
+        })
+      }
+
+      try {
+        // 2) Refresh participant + mission data in the background.
+        const { data: me, error: meError } = await supabase.rpc(
+          'get_my_participant',
+          { p_event_id: eventId },
+        )
+
+        if (meError) throw meError
+
+        const participant = Array.isArray(me) ? me[0] : me
+
+        if (!participant?.participant_id) {
+          window.location.replace('/join')
+          return
+        }
+
+        const { data: assignments, error: assignmentError } =
+          await supabase
+            .from('mission_assignments')
+            .select(`
+              id,
+              first_cleared_at,
+              mission:missions (
+                id,
+                title,
+                difficulty,
+                points,
+                required_mentions,
+                image_path,
+                drop:mission_drops (
+                  event_id,
+                  status,
+                  drop_number
+                )
+              )
+            `)
+            .eq('participant_id', participant.participant_id)
+            .order('created_at', { ascending: false })
+
+        if (assignmentError) throw assignmentError
+
+        const freshBase =
+          assignments
+            ?.filter((assignment: any) => {
+              const mission = assignment.mission
+              const drop = mission?.drop
+
+              return (
+                mission &&
+                drop &&
+                drop.event_id === eventId &&
+                drop.status === 'published'
+              )
+            })
+            .map((assignment: any) => ({
+              assignmentId: assignment.id,
+              cleared: Boolean(assignment.first_cleared_at),
+              id: assignment.mission.id,
+              title: assignment.mission.title,
+              difficulty: assignment.mission.difficulty,
+              points: assignment.mission.points,
+              dropNumber: assignment.mission.drop.drop_number,
+              requiredMentions: assignment.mission.required_mentions,
+              imagePath: assignment.mission.image_path,
+            })) ?? []
+
+        writeCache(eventId, user.id, {
+          savedAt: Date.now(),
+          participantId: participant.participant_id,
+          missions: freshBase,
+        })
+
+        const freshWithImages = await attachImageUrls(freshBase)
+
+        if (!cancelled) {
+          setMissions(freshWithImages)
+          setError('')
+        }
+      } catch (loadError) {
+        console.error(loadError)
+
+        // If cached data exists, keep showing it even if refresh fails.
+        if (!cached && !cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Mission情報を読み込めませんでした',
+          )
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [eventId, supabase])
+
+  const visibleMissions =
+    activeFilter === 'clear'
+      ? missions.filter((mission) => mission.cleared)
+      : activeFilter === 'unclear'
+        ? missions.filter((mission) => !mission.cleared)
+        : missions
 
   if (!eventId) {
     return (
-      <main
-        className="participantUi"
-        style={
-          {
-            '--participant-bg-image':
-              'url("/outing-bg.jpg")',
-          } as React.CSSProperties
-        }
-      >
+      <main className="participantUi">
         <div className="participantContent">
-          <section
-            className="glassCardStrong"
-            style={{ padding: 20 }}
-          >
+          <section className="glassCardStrong" style={{ padding: 20 }}>
             <p className="uiEyebrow">ERROR</p>
-
-            <h1 className="uiTitle">
-              イベント設定を読み込めません
-            </h1>
-
-            <p className="uiMuted">
-              NEXT_PUBLIC_EVENT_ID が設定されていません。
-            </p>
+            <h1 className="uiTitle">イベント設定を読み込めません</h1>
+            <p className="uiMuted">NEXT_PUBLIC_EVENT_ID が設定されていません。</p>
           </section>
         </div>
       </main>
     )
   }
 
-  const { data: me, error: meError } =
-    await supabase.rpc(
-      'get_my_participant',
-      {
-        p_event_id: eventId,
-      },
-    )
-
-  if (meError) {
+  if (loading && missions.length === 0) {
     return (
       <main
         className="participantUi"
         style={
           {
-            '--participant-bg-image':
-              'url("/outing-bg.jpg")',
+            '--participant-bg-image': 'url("/outing-bg.jpg")',
           } as React.CSSProperties
         }
       >
         <div className="participantContent">
-          <section
-            className="glassCardStrong"
-            style={{ padding: 20 }}
-          >
-            <p className="uiEyebrow">ERROR</p>
-
-            <h2
-              style={{
-                margin: '6px 0 8px',
-              }}
-            >
-              参加者情報を読み込めませんでした
-            </h2>
-
-            <p className="uiMuted">
-              {meError.message}
-            </p>
+          <section className="glassCardStrong" style={{ padding: 20 }}>
+            <p className="uiEyebrow">MISSIONS</p>
+            <p className="uiMuted">読み込み中...</p>
           </section>
         </div>
       </main>
     )
   }
 
-  const participant =
-    Array.isArray(me) ? me[0] : me
-
-  if (!participant?.participant_id) {
-    redirect('/join')
-  }
-
-  const {
-    data: assignments,
-    error: assignmentError,
-  } = await supabase
-    .from('mission_assignments')
-    .select(`
-      id,
-      first_cleared_at,
-      mission:missions (
-        id,
-        title,
-        difficulty,
-        points,
-        required_mentions,
-        image_path,
-        drop:mission_drops (
-          event_id,
-          status,
-          drop_number
-        )
-      )
-    `)
-    .eq(
-      'participant_id',
-      participant.participant_id,
-    )
-    .order('created_at', {
-      ascending: false,
-    })
-
-  if (assignmentError) {
+  if (error && missions.length === 0) {
     return (
       <main
         className="participantUi"
         style={
           {
-            '--participant-bg-image':
-              'url("/outing-bg.jpg")',
+            '--participant-bg-image': 'url("/outing-bg.jpg")',
           } as React.CSSProperties
         }
       >
         <div className="participantContent">
-          <section
-            className="glassCardStrong"
-            style={{ padding: 20 }}
-          >
+          <section className="glassCardStrong" style={{ padding: 20 }}>
             <p className="uiEyebrow">ERROR</p>
-
-            <h2
-              style={{
-                margin: '6px 0 8px',
-              }}
-            >
+            <h2 style={{ margin: '6px 0 8px' }}>
               Mission情報を読み込めませんでした
             </h2>
-
-            <p className="uiMuted">
-              {assignmentError.message}
-            </p>
+            <p className="uiMuted">{error}</p>
           </section>
         </div>
       </main>
     )
   }
-
-  const missions =
-    assignments
-      ?.filter((assignment: any) => {
-        const mission = assignment.mission
-        const drop = mission?.drop
-
-        return (
-          mission &&
-          drop &&
-          drop.event_id === eventId &&
-          drop.status === 'published'
-        )
-      })
-      .map((assignment: any) => ({
-        assignmentId: assignment.id,
-
-        cleared: Boolean(
-          assignment.first_cleared_at,
-        ),
-
-        id: assignment.mission.id,
-
-        title:
-          assignment.mission.title,
-
-        difficulty:
-          assignment.mission.difficulty,
-
-        points:
-          assignment.mission.points,
-
-        dropNumber:
-          assignment.mission.drop.drop_number,
-
-        requiredMentions:
-          assignment.mission.required_mentions,
-
-        imagePath:
-          assignment.mission.image_path,
-      })) ?? []
-
-  const missionImagePaths = [
-    ...new Set(
-      missions
-        .map((mission) => mission.imagePath)
-        .filter((path): path is string => Boolean(path)),
-    ),
-  ]
-
-  const missionImageUrlMap = new Map<string, string>()
-
-  if (missionImagePaths.length > 0) {
-    const { data: signedImages } =
-      await supabase.storage
-        .from('outing-photos')
-        .createSignedUrls(
-          missionImagePaths,
-          60 * 60,
-        )
-
-    ;(signedImages ?? []).forEach(
-      (entry, index) => {
-        if (entry.signedUrl) {
-          missionImageUrlMap.set(
-            missionImagePaths[index],
-            entry.signedUrl,
-          )
-        }
-      },
-    )
-  }
-
-  const missionsWithImages = missions.map(
-    (mission) => ({
-      ...mission,
-      imageUrl: mission.imagePath
-        ? (
-            missionImageUrlMap.get(
-              mission.imagePath,
-            ) ?? '/mission-default.jpg'
-          )
-        : '/mission-default.jpg',
-    }),
-  )
-
- const visibleMissions =
-    activeFilter === 'clear'
-      ? missionsWithImages.filter(
-          (mission) => mission.cleared,
-        )
-      : activeFilter === 'unclear'
-        ? missionsWithImages.filter(
-            (mission) => !mission.cleared,
-          )
-        : missionsWithImages
 
 return (
     <main

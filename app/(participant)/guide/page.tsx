@@ -1,168 +1,224 @@
+'use client'
+
 import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BookOpen,
-  CalendarDays,
-  CircleAlert,
+  ChevronDown,
   HomeIcon,
   Images,
   MapPin,
-  Package,
+  PackageCheck,
+  ShieldCheck,
   Target,
   UserRound,
   UsersRound,
-  ChevronDown,
+  CalendarDays,
+  CircleEllipsis,
 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
-import { createClient } from '@/lib/supabase/server'
+type GuideSection = {
+  id: string
+  section_type: string
+  title: string
+  body: string
+  sort_order: number
+}
 
+type GuideCache = {
+  sections: GuideSection[]
+  guideBackgroundPath: string
+  savedAt: number
+}
+
+const EVENT_ID = process.env.NEXT_PUBLIC_EVENT_ID ?? ''
+const DATA_CACHE_VERSION = 'outing-guide-v2'
+const IMAGE_CACHE_NAME = 'outing-ui-images-v1'
+const memoryCache = new Map<string, GuideCache>()
 
 const categories = [
-  {
-    type: 'schedule',
-    label: 'SCHEDULE',
-    title: 'タイムスケジュール',
-    icon: CalendarDays,
-  },
-  {
-    type: 'packing',
-    label: 'PACKING',
-    title: '持ち物',
-    icon: Package,
-  },
-  {
-    type: 'rules',
-    label: 'RULES',
-    title: '注意事項',
-    icon: CircleAlert,
-  },
-  {
-    type: 'place',
-    label: 'PLACE',
-    title: '施設・集合場所',
-    icon: MapPin,
-  },
-  {
-    type: 'groups',
-    label: 'GROUPS',
-    title: '班分け',
-    icon: UsersRound,
-  },
-  {
-    type: 'other',
-    label: 'INFORMATION',
-    title: 'その他',
-    icon: BookOpen,
-  },
-]
+  { type: 'schedule', label: 'SCHEDULE', title: 'スケジュール', icon: CalendarDays },
+  { type: 'packing', label: 'PACKING', title: '持ち物', icon: PackageCheck },
+  { type: 'rules', label: 'RULES', title: 'ルール', icon: ShieldCheck },
+  { type: 'place', label: 'PLACE', title: '場所・施設', icon: MapPin },
+  { type: 'groups', label: 'GROUPS', title: 'グループ', icon: UsersRound },
+  { type: 'other', label: 'OTHER', title: 'その他', icon: CircleEllipsis },
+] as const
 
-export default async function Guide() {
-  const supabase = await createClient()
-  const eventId =
-    process.env.NEXT_PUBLIC_EVENT_ID
+function dataCacheKey(eventId: string) {
+  return `${DATA_CACHE_VERSION}:${eventId}`
+}
 
-  if (!eventId) {
-    return (
-      <main className="participantUi">
-        <div className="participantContent">
-          <section
-            className="glassCardStrong"
-            style={{ padding: 18 }}
-          >
-            <p className="outingSerifEn">
-              ERROR
-            </p>
+function readDataCache(eventId: string): GuideCache | null {
+  const key = dataCacheKey(eventId)
+  const memory = memoryCache.get(key)
+  if (memory) return memory
 
-            <h1 className="outingSerifJa">
-              設定エラー
-            </h1>
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as GuideCache
+    if (!Array.isArray(parsed?.sections)) return null
+    memoryCache.set(key, parsed)
+    return parsed
+  } catch {
+    return null
+  }
+}
 
-            <p className="uiMuted outingSans">
-              EVENT ID が設定されていません。
-            </p>
-          </section>
-        </div>
-      </main>
-    )
+function writeDataCache(eventId: string, value: GuideCache) {
+  const key = dataCacheKey(eventId)
+  memoryCache.set(key, value)
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {}
+}
+
+async function getCachedUiImage(
+  stableId: string,
+  signedUrl: string,
+): Promise<string> {
+  if (!('caches' in window)) return signedUrl
+
+  const cache = await caches.open(IMAGE_CACHE_NAME)
+  const stableUrl =
+    `${window.location.origin}/__outing-cache/ui/` +
+    encodeURIComponent(stableId)
+  const request = new Request(stableUrl)
+  const cached = await cache.match(request)
+
+  if (cached) {
+    return URL.createObjectURL(await cached.blob())
   }
 
-  /* =========================
-      GUIDE CONTENT
-  ========================= */
+  const response = await fetch(signedUrl)
+  if (!response.ok) return signedUrl
 
-  const {
-    data: sections,
-    error,
-  } = await supabase
-    .from('guide_sections')
-    .select(
-      'id,section_type,title,body,sort_order',
-    )
-    .eq('event_id', eventId)
-    .order('sort_order', {
-      ascending: true,
-    })
+  await cache.put(request, response.clone())
+  return URL.createObjectURL(await response.blob())
+}
 
-  /* =========================
-      GUIDE HERO IMAGE
-  ========================= */
+export default function GuidePage() {
+  const supabase = useMemo(() => createClient(), [])
+  const [sections, setSections] = useState<GuideSection[]>([])
+  const [guideImageUrl, setGuideImageUrl] = useState('/outing-bg.jpg')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const { data: eventData } =
-    await supabase
-      .from('events')
-      .select('guide_background_path')
-      .eq('id', eventId)
-      .maybeSingle()
+  useEffect(() => {
+    let cancelled = false
+    let objectUrl: string | null = null
 
-  let guideImageUrl =
-    '/outing-bg.jpg'
+    async function applyBackground(path: string) {
+      if (!path) {
+        if (!cancelled) setGuideImageUrl('/outing-bg.jpg')
+        return
+      }
 
-  const guideBackgroundPath =
-    eventData?.guide_background_path ?? ''
+      const { data, error: signError } = await supabase.storage
+        .from('outing-photos')
+        .createSignedUrl(path, 60 * 60)
 
-  if (guideBackgroundPath) {
-    const {
-      data: signedBackground,
-    } = await supabase.storage
-      .from('outing-photos')
-      .createSignedUrl(
-        guideBackgroundPath,
-        60 * 60,
-      )
+      if (signError || !data?.signedUrl || cancelled) return
 
-    if (signedBackground?.signedUrl) {
-      guideImageUrl =
-        signedBackground.signedUrl
+      try {
+        const url = await getCachedUiImage(
+          `guide:${EVENT_ID}:${path}`,
+          data.signedUrl,
+        )
+
+        if (cancelled) {
+          if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+          return
+        }
+
+        if (objectUrl) URL.revokeObjectURL(objectUrl)
+        objectUrl = url.startsWith('blob:') ? url : null
+        setGuideImageUrl(url)
+      } catch {
+        if (!cancelled) setGuideImageUrl(data.signedUrl)
+      }
     }
-  }
+
+    async function load() {
+      if (!EVENT_ID) {
+        setError('イベントIDが設定されていません。')
+        setLoading(false)
+        return
+      }
+
+      const cached = readDataCache(EVENT_ID)
+      if (cached) {
+        setSections(cached.sections)
+        setLoading(false)
+        void applyBackground(cached.guideBackgroundPath)
+      }
+
+      const [sectionsResult, eventResult] = await Promise.all([
+        supabase
+          .from('guide_sections')
+          .select('id,section_type,title,body,sort_order')
+          .eq('event_id', EVENT_ID)
+          .order('sort_order', { ascending: true }),
+        supabase
+          .from('events')
+          .select('guide_background_path')
+          .eq('id', EVENT_ID)
+          .maybeSingle(),
+      ])
+
+      if (cancelled) return
+
+      if (sectionsResult.error) {
+        if (!cached) {
+          setError('Guideを読み込めませんでした。')
+          setLoading(false)
+        }
+        return
+      }
+
+      const nextSections = (sectionsResult.data ?? []) as GuideSection[]
+      const backgroundPath =
+        eventResult.data?.guide_background_path ?? ''
+
+      setSections(nextSections)
+      setError('')
+      setLoading(false)
+
+      writeDataCache(EVENT_ID, {
+        sections: nextSections,
+        guideBackgroundPath: backgroundPath,
+        savedAt: Date.now(),
+      })
+
+      await applyBackground(backgroundPath)
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [supabase])
 
   return (
     <main
       className="participantUi"
       style={
         {
-          '--participant-bg-image':
-            'url("/outing-bg.jpg")',
+          '--participant-bg-image': 'url("/outing-bg.jpg")',
         } as React.CSSProperties
       }
     >
       <div className="participantContent">
-
-        {/* =========================
-            HEADER
-        ========================= */}
-
-        <header
-          style={{
-            paddingTop: 24,
-            marginBottom: 20,
-          }}
-        >
+        <header style={{ paddingTop: 24, marginBottom: 20 }}>
           <p
             className="outingSerifEn"
             style={{
               margin: 0,
-              color:
-                'rgba(255,255,255,.58)',
+              color: 'rgba(255,255,255,.58)',
               fontSize: 11,
               letterSpacing: '.18em',
             }}
@@ -185,10 +241,6 @@ export default async function Guide() {
           </h1>
         </header>
 
-        {/* =========================
-            HERO PHOTO
-        ========================= */}
-
         <section
           style={{
             position: 'relative',
@@ -197,17 +249,14 @@ export default async function Guide() {
             aspectRatio: '16 / 9',
             marginBottom: 26,
             borderRadius: 18,
-
-            border:
-              '1px solid rgba(255,255,255,.10)',
-
-            boxShadow:
-              '0 18px 45px rgba(0,0,0,.26)',
+            border: '1px solid rgba(255,255,255,.10)',
+            boxShadow: '0 18px 45px rgba(0,0,0,.26)',
           }}
         >
           <img
             src={guideImageUrl}
             alt=""
+            decoding="async"
             style={{
               width: '100%',
               height: '100%',
@@ -216,45 +265,33 @@ export default async function Guide() {
               objectPosition: 'center',
             }}
           />
-
           <div
             style={{
               position: 'absolute',
               inset: 0,
-
               background:
-                'linear-gradient(to bottom, rgba(0,0,0,.02), rgba(0,0,0,.14))',
-
+                'linear-gradient(to bottom, rgba(0,0,0,.02), rgba(0,0,0,.34))',
               pointerEvents: 'none',
             }}
           />
         </section>
 
-        {/* =========================
-            ERROR
-        ========================= */}
-
         {error && (
           <section
             className="glassCardStrong"
-            style={{
-              padding: 18,
-              marginBottom: 16,
-            }}
+            style={{ padding: 18, marginBottom: 16 }}
           >
             <p
               className="outingSerifEn"
               style={{
                 margin: 0,
-                color:
-                  'rgba(255,255,255,.55)',
+                color: 'rgba(255,255,255,.55)',
                 fontSize: 11,
                 letterSpacing: '.16em',
               }}
             >
               ERROR
             </p>
-
             <h2
               className="outingSerifJa"
               style={{
@@ -266,37 +303,37 @@ export default async function Guide() {
             >
               Guideを読み込めませんでした
             </h2>
-
-            <p className="uiMuted outingSans">
-              {error.message}
+            <p className="uiMuted outingSans" style={{ margin: 0 }}>
+              {error}
             </p>
           </section>
         )}
 
-        {/* =========================
-            GUIDE SECTIONS
-        ========================= */}
-
         {!error && (
-          <section
-            style={{
-              paddingBottom: 110,
-            }}
-          >
-            {categories.map(
-              (
-                category,
-                categoryIndex,
-              ) => {
-                const categorySections =
-                  sections?.filter(
-                    (section) =>
-                      section.section_type ===
-                      category.type,
-                  ) ?? []
-
-                const Icon =
-                  category.icon
+          <section style={{ paddingBottom: 110 }}>
+            {loading && sections.length === 0 ? (
+              <section
+                className="glassCardStrong"
+                style={{ padding: 18 }}
+              >
+                <p
+                  className="outingSans"
+                  style={{
+                    margin: 0,
+                    color: 'rgba(255,255,255,.6)',
+                    fontSize: 13,
+                  }}
+                >
+                  Guideを読み込んでいます...
+                </p>
+              </section>
+            ) : (
+              categories.map((category, categoryIndex) => {
+                const categorySections = sections.filter(
+                  (section) =>
+                    section.section_type === category.type,
+                )
+                const Icon = category.icon
 
                 return (
                   <div
@@ -306,7 +343,6 @@ export default async function Guide() {
                         categoryIndex === 0
                           ? '1px solid rgba(255,255,255,.08)'
                           : undefined,
-
                       borderBottom:
                         '1px solid rgba(255,255,255,.08)',
                     }}
@@ -316,72 +352,39 @@ export default async function Guide() {
                         style={{
                           listStyle: 'none',
                           cursor: 'pointer',
-
                           display: 'grid',
-
                           gridTemplateColumns:
                             '40px minmax(0,1fr) auto',
-
-                          alignItems:
-                            'center',
-
+                          alignItems: 'center',
                           gap: 12,
-
-                          padding:
-                            '16px 2px',
+                          padding: '16px 2px',
                         }}
                       >
                         <span
                           style={{
                             width: 40,
                             height: 40,
-
                             display: 'grid',
-                            placeItems:
-                              'center',
-
-                            borderRadius:
-                              999,
-
-                            background:
-                              'rgba(128,84,220,.18)',
-
+                            placeItems: 'center',
+                            borderRadius: 999,
+                            background: 'rgba(128,84,220,.18)',
                             border:
                               '1px solid rgba(169,139,255,.16)',
-
-                            color:
-                              '#c1adff',
+                            color: '#c1adff',
                           }}
                         >
-                          <Icon
-                            size={18}
-                            strokeWidth={
-                              1.6
-                            }
-                          />
+                          <Icon size={18} strokeWidth={1.6} />
                         </span>
 
-                        <span
-                          style={{
-                            minWidth: 0,
-                          }}
-                        >
+                        <span style={{ minWidth: 0 }}>
                           <span
                             className="outingSerifEn"
                             style={{
-                              display:
-                                'block',
-
-                              color:
-                                'rgba(255,255,255,.48)',
-
+                              display: 'block',
+                              color: 'rgba(255,255,255,.48)',
                               fontSize: 9,
-
-                              fontWeight:
-                                500,
-
-                              letterSpacing:
-                                '.18em',
+                              fontWeight: 500,
+                              letterSpacing: '.18em',
                             }}
                           >
                             {category.label}
@@ -390,20 +393,12 @@ export default async function Guide() {
                           <strong
                             className="outingSerifJa"
                             style={{
-                              display:
-                                'block',
-
+                              display: 'block',
                               marginTop: 2,
-
                               color: '#fff',
-
                               fontSize: 16,
-
-                              fontWeight:
-                                400,
-
-                              lineHeight:
-                                1.5,
+                              fontWeight: 400,
+                              lineHeight: 1.5,
                             }}
                           >
                             {category.title}
@@ -414,112 +409,69 @@ export default async function Guide() {
                           size={17}
                           strokeWidth={1.5}
                           style={{
-                            color:
-                              'rgba(255,255,255,.42)',
+                            color: 'rgba(255,255,255,.42)',
                           }}
                         />
                       </summary>
 
-                      <div
-                        style={{
-                          padding:
-                            '0 2px 18px 52px',
-                        }}
-                      >
-                        {categorySections.length ===
-                        0 ? (
+                      <div style={{ padding: '0 2px 18px 52px' }}>
+                        {categorySections.length === 0 ? (
                           <p
                             className="uiMuted outingSans"
-                            style={{
-                              margin:
-                                '2px 0',
-
-                              fontSize: 13,
-                            }}
+                            style={{ margin: '2px 0', fontSize: 13 }}
                           >
                             現在情報はありません。
                           </p>
                         ) : (
-                          categorySections.map(
-                            (
-                              section,
-                              index,
-                            ) => (
-                              <article
-                                key={
-                                  section.id
-                                }
+                          categorySections.map((section, index) => (
+                            <article
+                              key={section.id}
+                              style={{
+                                padding: '14px 0',
+                                borderBottom:
+                                  index ===
+                                  categorySections.length - 1
+                                    ? 'none'
+                                    : '1px solid rgba(255,255,255,.07)',
+                              }}
+                            >
+                              <h2
+                                className="outingSerifJa"
                                 style={{
-                                  padding:
-                                    '14px 0',
-
-                                  borderBottom:
-                                    index ===
-                                    categorySections.length -
-                                      1
-                                      ? 'none'
-                                      : '1px solid rgba(255,255,255,.055)',
+                                  margin: 0,
+                                  color: '#fff',
+                                  fontSize: 15,
+                                  fontWeight: 400,
+                                  lineHeight: 1.55,
                                 }}
                               >
-                                <h2
-                                  className="outingSerifJa"
-                                  style={{
-                                    margin: 0,
+                                {section.title}
+                              </h2>
 
-                                    color:
-                                      '#fff',
-
-                                    fontSize:
-                                      15,
-
-                                    fontWeight:
-                                      400,
-
-                                    lineHeight:
-                                      1.55,
-                                  }}
-                                >
-                                  {section.title}
-                                </h2>
-
-                                <p
-                                  className="outingSans"
-                                  style={{
-                                    margin:
-                                      '7px 0 0',
-
-                                    whiteSpace:
-                                      'pre-wrap',
-
-                                    color:
-                                      'rgba(255,255,255,.62)',
-
-                                    fontSize:
-                                      13,
-
-                                    lineHeight:
-                                      1.85,
-                                  }}
-                                >
-                                  {section.body}
-                                </p>
-                              </article>
-                            ),
-                          )
+                              <p
+                                className="outingSans"
+                                style={{
+                                  margin: '7px 0 0',
+                                  whiteSpace: 'pre-wrap',
+                                  color: 'rgba(255,255,255,.62)',
+                                  fontSize: 13,
+                                  lineHeight: 1.85,
+                                }}
+                              >
+                                {section.body}
+                              </p>
+                            </article>
+                          ))
                         )}
                       </div>
                     </details>
                   </div>
                 )
-              },
+              })
             )}
           </section>
         )}
       </div>
-
-      {/* =========================
-          BOTTOM NAV
-      ========================= */}
 
       <nav className="outingNav">
         <Link href="/">
@@ -527,10 +479,7 @@ export default async function Guide() {
           <span>Home</span>
         </Link>
 
-        <Link
-          href="/guide"
-          className="active"
-        >
+        <Link href="/guide" className="active">
           <BookOpen />
           <span>Guide</span>
         </Link>

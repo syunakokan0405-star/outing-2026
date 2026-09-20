@@ -1,5 +1,7 @@
+'use client'
+
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight,
   BookOpen,
@@ -11,8 +13,7 @@ import {
 } from 'lucide-react'
 
 import PointTop5 from '@/components/PointTop5'
-import { createClient } from '@/lib/supabase/server'
-
+import { createClient } from '@/lib/supabase/client'
 
 type MissionRow = {
   id: string
@@ -23,22 +24,353 @@ type MissionRow = {
   cleared: boolean
 }
 
-export default async function Home() {
-  const supabase = await createClient()
-  const eventId = process.env.NEXT_PUBLIC_EVENT_ID
+type AnnouncementRow = {
+  id: string
+  title: string
+  body: string
+  published_at: string | null
+  created_at: string
+}
+
+type HomeCache = {
+  savedAt: number
+  participantId: string
+  announcements: AnnouncementRow[]
+  missions: MissionRow[]
+  announcementBackgroundPath: string
+}
+
+const HOME_CACHE_VERSION = 'outing-home-v2'
+const UI_IMAGE_CACHE_NAME = 'outing-ui-images-v1'
+const homeMemoryCache = new Map<string, HomeCache>()
+
+async function getCachedHomeImage(
+  stableId: string,
+  signedUrl: string,
+): Promise<string> {
+  if (!('caches' in window)) return signedUrl
+
+  const cache = await caches.open(UI_IMAGE_CACHE_NAME)
+  const stableUrl =
+    `${window.location.origin}/__outing-cache/ui/` +
+    encodeURIComponent(stableId)
+  const request = new Request(stableUrl)
+  const cached = await cache.match(request)
+
+  if (cached) {
+    return URL.createObjectURL(await cached.blob())
+  }
+
+  const response = await fetch(signedUrl)
+  if (!response.ok) return signedUrl
+
+  await cache.put(request, response.clone())
+  return URL.createObjectURL(await response.blob())
+}
+
+function getHomeCacheKey(eventId: string, userId: string) {
+  return `${HOME_CACHE_VERSION}:${eventId}:${userId}`
+}
+
+function readHomeCache(eventId: string, userId: string): HomeCache | null {
+  const key = getHomeCacheKey(eventId, userId)
+  const memory = homeMemoryCache.get(key)
+  if (memory) return memory
+
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as HomeCache
+    if (
+      !parsed ||
+      !Array.isArray(parsed.announcements) ||
+      !Array.isArray(parsed.missions)
+    ) {
+      return null
+    }
+
+    homeMemoryCache.set(key, parsed)
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeHomeCache(
+  eventId: string,
+  userId: string,
+  value: HomeCache,
+) {
+  const key = getHomeCacheKey(eventId, userId)
+  homeMemoryCache.set(key, value)
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Cache failure must never block Home.
+  }
+}
+
+export default function Home() {
+  const supabase = useMemo(() => createClient(), [])
+  const eventId = process.env.NEXT_PUBLIC_EVENT_ID ?? ''
+
+  const [announcements, setAnnouncements] =
+    useState<AnnouncementRow[]>([])
+  const [normalizedMissions, setNormalizedMissions] =
+    useState<MissionRow[]>([])
+  const [announcementError, setAnnouncementError] =
+    useState<Error | null>(null)
+  const [missionError, setMissionError] =
+    useState<Error | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [announcementBackgroundUrl, setAnnouncementBackgroundUrl] =
+    useState('/outing-bg.jpg')
+
+  useEffect(() => {
+    if (!eventId) {
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+    let announcementObjectUrl: string | null = null
+
+    async function applyAnnouncementBackground(path: string) {
+      if (!path) {
+        if (!cancelled) setAnnouncementBackgroundUrl('/outing-bg.jpg')
+        return
+      }
+
+      const { data, error } = await supabase.storage
+        .from('outing-photos')
+        .createSignedUrl(path, 60 * 60)
+
+      if (error || !data?.signedUrl || cancelled) return
+
+      try {
+        const url = await getCachedHomeImage(
+          `announcement:${eventId}:${path}`,
+          data.signedUrl,
+        )
+
+        if (cancelled) {
+          if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+          return
+        }
+
+        if (announcementObjectUrl) {
+          URL.revokeObjectURL(announcementObjectUrl)
+        }
+
+        announcementObjectUrl = url.startsWith('blob:') ? url : null
+        setAnnouncementBackgroundUrl(url)
+      } catch {
+        if (!cancelled) setAnnouncementBackgroundUrl(data.signedUrl)
+      }
+    }
+
+    async function loadHome() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        window.location.replace('/join')
+        return
+      }
+
+      const cached = readHomeCache(eventId, user.id)
+
+      if (cached) {
+        setAnnouncements(cached.announcements)
+        setNormalizedMissions(cached.missions)
+        setLoading(false)
+        void applyAnnouncementBackground(
+          cached.announcementBackgroundPath ?? '',
+        )
+      }
+
+      try {
+        const { data: me, error: meError } = await supabase.rpc(
+          'get_my_participant',
+          { p_event_id: eventId },
+        )
+
+        if (meError) throw meError
+
+        const participant = Array.isArray(me) ? me[0] : me
+
+        if (!participant?.participant_id) {
+          window.location.replace('/join')
+          return
+        }
+
+        // These reads are independent, so run them together.
+        const [announcementResult, assignmentResult, eventResult] =
+          await Promise.all([
+            supabase
+              .from('announcements')
+              .select(`
+                id,
+                title,
+                body,
+                published_at,
+                created_at
+              `)
+              .eq('event_id', eventId)
+              .eq('is_published', true)
+              .order('published_at', {
+                ascending: false,
+                nullsFirst: false,
+              })
+              .limit(3),
+
+            supabase
+              .from('mission_assignments')
+              .select(`
+                id,
+                first_cleared_at,
+                mission:missions (
+                  id,
+                  title,
+                  difficulty,
+                  points,
+                  drop:mission_drops (
+                    event_id,
+                    status,
+                    drop_number
+                  )
+                )
+              `)
+              .eq('participant_id', participant.participant_id)
+              .order('created_at', { ascending: false }),
+
+            supabase
+              .from('events')
+              .select('announcement_background_path')
+              .eq('id', eventId)
+              .maybeSingle(),
+          ])
+
+        if (announcementResult.error) {
+          setAnnouncementError(
+            new Error(announcementResult.error.message),
+          )
+        } else {
+          setAnnouncementError(null)
+        }
+
+        if (assignmentResult.error) {
+          setMissionError(new Error(assignmentResult.error.message))
+        } else {
+          setMissionError(null)
+        }
+
+        const freshAnnouncements =
+          (announcementResult.data ?? []) as AnnouncementRow[]
+
+        const freshMissions: MissionRow[] =
+          (assignmentResult.data ?? [])
+            .map((assignment: any): MissionRow | null => {
+              const mission = Array.isArray(assignment.mission)
+                ? assignment.mission[0]
+                : assignment.mission
+
+              if (!mission) return null
+
+              const drop = Array.isArray(mission.drop)
+                ? mission.drop[0]
+                : mission.drop
+
+              if (
+                !drop ||
+                drop.event_id !== eventId ||
+                drop.status !== 'published'
+              ) {
+                return null
+              }
+
+              return {
+                id: mission.id,
+                title: mission.title,
+                difficulty: mission.difficulty,
+                points: mission.points,
+                dropNumber: drop.drop_number,
+                cleared: Boolean(assignment.first_cleared_at),
+              }
+            })
+            .filter(
+              (mission: MissionRow | null): mission is MissionRow =>
+                mission !== null,
+            )
+
+        freshMissions.sort(
+          (a, b) => b.dropNumber - a.dropNumber,
+        )
+
+        const nextAnnouncements = announcementResult.error
+          ? cached?.announcements ?? []
+          : freshAnnouncements
+
+        const nextMissions = assignmentResult.error
+          ? cached?.missions ?? []
+          : freshMissions
+
+        if (!cancelled) {
+          setAnnouncements(nextAnnouncements)
+          setNormalizedMissions(nextMissions)
+        }
+
+        const announcementBackgroundPath =
+          eventResult.data?.announcement_background_path ??
+          cached?.announcementBackgroundPath ??
+          ''
+
+        writeHomeCache(eventId, user.id, {
+          savedAt: Date.now(),
+          participantId: participant.participant_id,
+          announcements: nextAnnouncements,
+          missions: nextMissions,
+          announcementBackgroundPath,
+        })
+
+        void applyAnnouncementBackground(announcementBackgroundPath)
+      } catch (error) {
+        console.error(error)
+
+        if (!cached && !cancelled) {
+          const normalized =
+            error instanceof Error
+              ? error
+              : new Error('Homeを読み込めませんでした')
+          setAnnouncementError(normalized)
+          setMissionError(normalized)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void loadHome()
+
+    return () => {
+      cancelled = true
+      if (announcementObjectUrl) {
+        URL.revokeObjectURL(announcementObjectUrl)
+      }
+    }
+  }, [eventId, supabase])
+
+  const currentMission = normalizedMissions[0] ?? null
 
   if (!eventId) {
     return (
       <main className="participantUi">
         <div className="participantContent">
-          <section
-            className="glassCard"
-            style={{ padding: 18 }}
-          >
-            <h2 className="outingSerifJa">
-              設定エラー
-            </h2>
-
+          <section className="glassCard" style={{ padding: 18 }}>
+            <h2 className="outingSerifJa">設定エラー</h2>
             <p className="uiMuted outingSans">
               NEXT_PUBLIC_EVENT_ID が設定されていません。
             </p>
@@ -48,148 +380,26 @@ export default async function Home() {
     )
   }
 
-  const { data: me, error: meError } =
-    await supabase.rpc(
-      'get_my_participant',
-      {
-        p_event_id: eventId,
-      },
-    )
-
-  if (meError) {
+  if (loading && announcements.length === 0 && !currentMission) {
     return (
-      <main className="participantUi">
+      <main
+        className="participantUi"
+        style={
+          {
+            '--participant-bg-image': 'url("/outing-bg.jpg")',
+          } as React.CSSProperties
+        }
+      >
         <div className="participantContent">
-          <section
-            className="glassCard"
-            style={{ padding: 18 }}
-          >
-            <h2 className="outingSerifJa">
-              参加者情報を取得できませんでした
-            </h2>
-
-            <p className="uiMuted outingSans">
-              {meError.message}
-            </p>
+          <section className="glassCard" style={{ padding: 18 }}>
+            <p className="uiMuted outingSans">読み込み中...</p>
           </section>
         </div>
       </main>
     )
   }
 
-  const participant =
-    Array.isArray(me) ? me[0] : me
-
-  if (!participant?.participant_id) {
-    redirect('/join')
-  }
-
-  const {
-    data: announcements,
-    error: announcementError,
-  } = await supabase
-    .from('announcements')
-    .select(`
-      id,
-      title,
-      body,
-      published_at,
-      created_at
-    `)
-    .eq('event_id', eventId)
-    .eq('is_published', true)
-    .order('published_at', {
-      ascending: false,
-      nullsFirst: false,
-    })
-    .limit(3)
-
-  const {
-    data: assignments,
-    error: missionError,
-  } = await supabase
-    .from('mission_assignments')
-    .select(`
-      id,
-      first_cleared_at,
-      mission:missions (
-        id,
-        title,
-        difficulty,
-        points,
-        drop:mission_drops (
-          event_id,
-          status,
-          drop_number
-        )
-      )
-    `)
-    .eq(
-      'participant_id',
-      participant.participant_id,
-    )
-    .order('created_at', {
-      ascending: false,
-    })
-
-  const normalizedMissions: MissionRow[] =
-    assignments
-      ?.map(
-        (
-          assignment: any,
-        ): MissionRow | null => {
-          const mission = Array.isArray(
-            assignment.mission,
-          )
-            ? assignment.mission[0]
-            : assignment.mission
-
-          if (!mission) {
-            return null
-          }
-
-          const drop = Array.isArray(
-            mission.drop,
-          )
-            ? mission.drop[0]
-            : mission.drop
-
-          if (
-            !drop ||
-            drop.event_id !== eventId ||
-            drop.status !== 'published'
-          ) {
-            return null
-          }
-
-          return {
-            id: mission.id,
-            title: mission.title,
-            difficulty: mission.difficulty,
-            points: mission.points,
-            dropNumber: drop.drop_number,
-            cleared: Boolean(
-              assignment.first_cleared_at,
-            ),
-          }
-        },
-      )
-      .filter(
-        (
-          mission,
-        ): mission is MissionRow =>
-          mission !== null,
-      ) ?? []
-
-  normalizedMissions.sort(
-    (a, b) =>
-      b.dropNumber - a.dropNumber,
-  )
-
-  const currentMission =
-    normalizedMissions[0] ?? null
-
-  return (
+return (
     <main
       className="participantUi"
       style={
@@ -242,7 +452,7 @@ export default async function Home() {
                 minHeight: 180,
 
                 backgroundImage:
-                  'linear-gradient(135deg, rgba(8,10,16,.82), rgba(18,11,30,.68)), url("/outing-bg.jpg")',
+                  `linear-gradient(135deg, rgba(8,10,16,.82), rgba(18,11,30,.68)), url("${announcementBackgroundUrl}")`,
 
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',

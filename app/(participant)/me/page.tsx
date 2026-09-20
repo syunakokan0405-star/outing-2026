@@ -110,6 +110,61 @@ type MeCache = {
 
 let meCache: MeCache | null = null
 
+const ME_CACHE_KEY = 'outing-me-cache-v1'
+
+function readPersistentMeCache(): MeCache | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(ME_CACHE_KEY)
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as Partial<MeCache>
+
+    return {
+      name: typeof parsed.name === 'string' ? parsed.name : 'My Page',
+      score: typeof parsed.score === 'number' ? parsed.score : 0,
+      connections:
+        typeof parsed.connections === 'number' ? parsed.connections : 0,
+      connectionPeople: Array.isArray(parsed.connectionPeople)
+        ? parsed.connectionPeople
+        : [],
+      rank: typeof parsed.rank === 'number' ? parsed.rank : null,
+      participantId:
+        typeof parsed.participantId === 'string'
+          ? parsed.participantId
+          : null,
+      eventId:
+        typeof parsed.eventId === 'string' ? parsed.eventId : null,
+      // Signed avatar URLs expire, so never restore them from localStorage.
+      avatarUrl: null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writePersistentMeCache(cache: MeCache) {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(
+      ME_CACHE_KEY,
+      JSON.stringify({
+        ...cache,
+        avatarUrl: null,
+        connectionPeople: cache.connectionPeople.map((person) => ({
+          ...person,
+          // Connection avatar signed URLs also expire.
+          avatarUrl: null,
+        })),
+      }),
+    )
+  } catch {
+    // Cache failure must never block My Page.
+  }
+}
+
 export default function Me() {
   const supabase = useMemo(
     () => createClient(),
@@ -186,6 +241,20 @@ export default function Me() {
     croppedAreaPixels,
     setCroppedAreaPixels,
   ] = useState<Area | null>(null)
+
+  useEffect(() => {
+    const cached = meCache ?? readPersistentMeCache()
+    if (!cached) return
+
+    meCache = cached
+    setName(cached.name)
+    setScore(cached.score)
+    setConnections(cached.connections)
+    setConnectionPeople(cached.connectionPeople)
+    setRank(cached.rank)
+    setParticipantId(cached.participantId)
+    setEventId(cached.eventId)
+  }, [])
 
   useEffect(() => {
     void (async () => {
@@ -291,7 +360,7 @@ export default function Me() {
   }, [supabase])
 
   useEffect(() => {
-    meCache = {
+    const nextCache: MeCache = {
       name,
       score,
       connections,
@@ -301,6 +370,9 @@ export default function Me() {
       eventId,
       avatarUrl,
     }
+
+    meCache = nextCache
+    writePersistentMeCache(nextCache)
   }, [
     avatarUrl,
     connectionPeople,

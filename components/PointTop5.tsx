@@ -14,12 +14,76 @@ type RankRow = {
   avatar_url: string
 }
 
+type StoredRankRow = Omit<RankRow, 'avatar_url'>
+
 type PointTop5Cache = {
-  rows: RankRow[]
-  rankingBackgroundUrl: string
+  savedAt: number
+  rows: StoredRankRow[]
+  rankingBackgroundPath: string
 }
 
-let pointTop5Cache: PointTop5Cache | null = null
+const CACHE_VERSION = 'outing-point-top5-v2'
+const UI_IMAGE_CACHE_NAME = 'outing-ui-images-v1'
+const memoryCache = new Map<string, PointTop5Cache>()
+
+async function getCachedRankingImage(
+  stableId: string,
+  signedUrl: string,
+): Promise<string> {
+  if (!('caches' in window)) return signedUrl
+
+  const cache = await caches.open(UI_IMAGE_CACHE_NAME)
+  const stableUrl =
+    `${window.location.origin}/__outing-cache/ui/` +
+    encodeURIComponent(stableId)
+  const request = new Request(stableUrl)
+  const cached = await cache.match(request)
+
+  if (cached) {
+    return URL.createObjectURL(await cached.blob())
+  }
+
+  const response = await fetch(signedUrl)
+  if (!response.ok) return signedUrl
+
+  await cache.put(request, response.clone())
+  return URL.createObjectURL(await response.blob())
+}
+
+function cacheKey(eventId: string, userId: string) {
+  return `${CACHE_VERSION}:${eventId}:${userId}`
+}
+
+function readCache(eventId: string, userId: string): PointTop5Cache | null {
+  const key = cacheKey(eventId, userId)
+  const memory = memoryCache.get(key)
+  if (memory) return memory
+
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as PointTop5Cache
+    if (!parsed || !Array.isArray(parsed.rows)) return null
+    memoryCache.set(key, parsed)
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeCache(
+  eventId: string,
+  userId: string,
+  value: PointTop5Cache,
+) {
+  const key = cacheKey(eventId, userId)
+  memoryCache.set(key, value)
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Cache failure must not break ranking.
+  }
+}
 
 export default function PointTop5() {
   const supabase = useMemo(() => createClient(), [])
@@ -27,15 +91,15 @@ export default function PointTop5() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [rankingBackgroundUrl, setRankingBackgroundUrl] =
- 
- useState('/mission-default.jpg')
+    useState('/mission-default.jpg')
+
   const load = useCallback(async () => {
-    setLoading(true)
     setError('')
 
     const { data: authData } = await supabase.auth.getUser()
+    const user = authData.user
 
-    if (!authData.user) {
+    if (!user) {
       setError('参加者ログイン後にランキングを表示できます。')
       setLoading(false)
       return
@@ -45,7 +109,7 @@ export default function PointTop5() {
       await supabase
         .from('participants')
         .select('event_id')
-        .eq('auth_user_id', authData.user.id)
+        .eq('auth_user_id', user.id)
         .maybeSingle()
 
     if (participantError || !participant) {
@@ -53,133 +117,187 @@ export default function PointTop5() {
       setLoading(false)
       return
     }
-const { data: eventData } = await supabase
-  .from('events')
-  .select('ranking_background_path')
-  .eq('id', participant.event_id)
-  .maybeSingle()
 
-const rankingBackgroundPath =
-  eventData?.ranking_background_path ?? ''
+    const eventId = participant.event_id
+    const cached = readCache(eventId, user.id)
 
-let nextRankingBackgroundUrl =
-  pointTop5Cache?.rankingBackgroundUrl ??
-  '/mission-default.jpg'
-
-if (rankingBackgroundPath) {
-  const { data: backgroundData } = await supabase.storage
-    .from('outing-photos')
-    .createSignedUrl(
-      rankingBackgroundPath,
-      60 * 60,
-    )
-
-  if (backgroundData?.signedUrl) {
-    nextRankingBackgroundUrl =
-      `${backgroundData.signedUrl}&t=${Date.now()}`
-    setRankingBackgroundUrl(nextRankingBackgroundUrl)
-  }
-} else {
-  nextRankingBackgroundUrl = '/mission-default.jpg'
-  setRankingBackgroundUrl(nextRankingBackgroundUrl)
-}
-    const { data, error: rankError } =
-      await supabase.rpc('get_event_top5', {
-        p_event_id: participant.event_id,
-      })
-
-    if (rankError) {
-      setError(rankError.message)
-      setLoading(false)
-      return
-    }
-
-    const rankRows = (data ?? []).map((row: any) => ({
-      rank: Number(row.rank),
-      participant_id: row.participant_id as string,
-      participant_name: row.participant_name as string,
-      score: Number(row.score ?? 0),
-    }))
-
-    if (!rankRows.length) {
-      pointTop5Cache = {
-        rows: [],
-        rankingBackgroundUrl: nextRankingBackgroundUrl,
+    async function applyRankingBackground(
+      path: string,
+      signedUrl?: string,
+    ) {
+      if (!path) {
+        setRankingBackgroundUrl('/mission-default.jpg')
+        return
       }
-      setRows([])
-      setLoading(false)
-      return
+
+      let resolvedSignedUrl = signedUrl ?? ''
+
+      if (!resolvedSignedUrl) {
+        const { data, error } = await supabase.storage
+          .from('outing-photos')
+          .createSignedUrl(path, 60 * 60)
+
+        if (error || !data?.signedUrl) return
+        resolvedSignedUrl = data.signedUrl
+      }
+
+      try {
+        const url = await getCachedRankingImage(
+          `ranking:${eventId}:${path}`,
+          resolvedSignedUrl,
+        )
+        setRankingBackgroundUrl(url)
+      } catch {
+        setRankingBackgroundUrl(resolvedSignedUrl)
+      }
     }
 
-    const ids = rankRows.map((row: any) => row.participant_id)
+    // Show cached text/background data immediately.
+    // Signed URLs themselves are never persisted.
+    if (cached) {
+      void applyRankingBackground(cached.rankingBackgroundPath)
 
-    const { data: participantRows, error: avatarError } =
-      await supabase
+      setRows(
+        cached.rows.map((row) => ({
+          ...row,
+          avatar_url: '',
+        })),
+      )
+      setLoading(false)
+    }
+
+    try {
+      // Ranking and event background metadata are independent.
+      const [eventResult, rankResult] = await Promise.all([
+        supabase
+          .from('events')
+          .select('ranking_background_path')
+          .eq('id', eventId)
+          .maybeSingle(),
+        supabase.rpc('get_event_top5', {
+          p_event_id: eventId,
+        }),
+      ])
+
+      if (rankResult.error) throw rankResult.error
+
+      const rankingBackgroundPath =
+        eventResult.data?.ranking_background_path ?? ''
+
+      const rankRows = (rankResult.data ?? []).map((row: any) => ({
+        rank: Number(row.rank),
+        participant_id: row.participant_id as string,
+        participant_name: row.participant_name as string,
+        score: Number(row.score ?? 0),
+      }))
+
+      if (!rankRows.length) {
+        writeCache(eventId, user.id, {
+          savedAt: Date.now(),
+          rows: [],
+          rankingBackgroundPath,
+        })
+        setRows([])
+        setLoading(false)
+        return
+      }
+
+      const ids = rankRows.map((row: any) => row.participant_id)
+
+      // Participant avatar metadata and background signature can run together.
+      const participantPromise = supabase
         .from('participants')
         .select('id,avatar_path')
         .in('id', ids)
 
-    if (avatarError) {
-      setError(avatarError.message)
-      setLoading(false)
-      return
-    }
+      const backgroundPromise = rankingBackgroundPath
+        ? supabase.storage
+            .from('outing-photos')
+            .createSignedUrl(rankingBackgroundPath, 60 * 60)
+        : Promise.resolve({ data: null, error: null })
 
-    const avatarPathMap = new Map<string, string | null>()
+      const [participantResult, backgroundResult] =
+        await Promise.all([participantPromise, backgroundPromise])
 
-    ;(participantRows ?? []).forEach((row: any) => {
-      avatarPathMap.set(row.id, row.avatar_path ?? null)
-    })
+      if (participantResult.error) throw participantResult.error
 
- const avatarPaths: string[] = [
-  ...new Set<string>(
-    rankRows
-      .map((row: any) =>
-        avatarPathMap.get(row.participant_id),
-      )
-      .filter(
-        (path: string | null | undefined): path is string =>
-          typeof path === 'string' && path.length > 0,
-      ),
-  ),
-]
-
-const avatarUrlMap = new Map<string, string>()
-
-if (avatarPaths.length) {
-  const { data: signedData } = await supabase.storage
-    .from('outing-photos')
-    .createSignedUrls(avatarPaths, 60 * 60)
-
-  ;(signedData ?? []).forEach((entry, index) => {
-    const path = avatarPaths[index]
-
-    if (entry.signedUrl && path) {
-      avatarUrlMap.set(path, entry.signedUrl)
-    }
-  })
-}
-
-    const nextRows = rankRows.map((row: any) => {
-      const avatarPath =
-        avatarPathMap.get(row.participant_id) ?? null
-
-      return {
-        ...row,
-        avatar_path: avatarPath,
-        avatar_url: avatarPath
-          ? avatarUrlMap.get(avatarPath) ?? ''
-          : '',
+      if (rankingBackgroundPath && backgroundResult.data?.signedUrl) {
+        void applyRankingBackground(
+          rankingBackgroundPath,
+          backgroundResult.data.signedUrl,
+        )
+      } else {
+        setRankingBackgroundUrl('/mission-default.jpg')
       }
-    })
 
-    pointTop5Cache = {
-      rows: nextRows,
-      rankingBackgroundUrl: nextRankingBackgroundUrl,
+      const avatarPathMap = new Map<string, string | null>()
+      ;(participantResult.data ?? []).forEach((row: any) => {
+        avatarPathMap.set(row.id, row.avatar_path ?? null)
+      })
+
+      const avatarPaths = [
+        ...new Set<string>(
+          rankRows
+            .map((row: any) =>
+              avatarPathMap.get(row.participant_id),
+            )
+            .filter(
+              (
+                path: string | null | undefined,
+              ): path is string =>
+                typeof path === 'string' && path.length > 0,
+            ),
+        ),
+      ]
+
+      const avatarUrlMap = new Map<string, string>()
+
+      if (avatarPaths.length) {
+        const { data: signedData } = await supabase.storage
+          .from('outing-photos')
+          .createSignedUrls(avatarPaths, 60 * 60)
+
+        ;(signedData ?? []).forEach((entry, index) => {
+          const path = avatarPaths[index]
+          if (entry.signedUrl && path) {
+            avatarUrlMap.set(path, entry.signedUrl)
+          }
+        })
+      }
+
+      const nextRows: RankRow[] = rankRows.map((row: any) => {
+        const avatarPath =
+          avatarPathMap.get(row.participant_id) ?? null
+
+        return {
+          ...row,
+          avatar_path: avatarPath,
+          avatar_url: avatarPath
+            ? avatarUrlMap.get(avatarPath) ?? ''
+            : '',
+        }
+      })
+
+      writeCache(eventId, user.id, {
+        savedAt: Date.now(),
+        rankingBackgroundPath,
+        rows: nextRows.map(({ avatar_url, ...row }) => row),
+      })
+
+      setRows(nextRows)
+      setError('')
+      setLoading(false)
+    } catch (loadError) {
+      console.error(loadError)
+      if (!cached) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'ランキングを読み込めませんでした。',
+        )
+      }
+      setLoading(false)
     }
-
-    setRows(nextRows)
-    setLoading(false)
   }, [supabase])
 
   useEffect(() => {
@@ -207,9 +325,12 @@ if (avatarPaths.length) {
       )
       .subscribe()
 
+    // Realtime already catches score-related changes.
+    // A slower fallback poll protects against a missed realtime event
+    // without hitting Supabase every 15 seconds.
     const timer = window.setInterval(
       () => void load(),
-      15000,
+      60000,
     )
 
     const onFocus = () => void load()
