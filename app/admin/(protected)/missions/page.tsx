@@ -79,6 +79,8 @@ export default function AdminMissions() {
   const [creating, setCreating] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(true)
   const [busyDropId, setBusyDropId] = useState<string | null>(null)
+  const [editingDropId, setEditingDropId] = useState<string | null>(null)
+  const [draftDropNumber, setDraftDropNumber] = useState('')
 
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -316,6 +318,65 @@ export default function AdminMissions() {
     } finally {
       setCreating(false)
     }
+  }
+
+  function startEditingDropNumber(drop: DropRow) {
+    setMessage('')
+    setError('')
+    setEditingDropId(drop.id)
+    setDraftDropNumber(String(drop.drop_number))
+  }
+
+  function cancelEditingDropNumber() {
+    setEditingDropId(null)
+    setDraftDropNumber('')
+  }
+
+  async function saveDropNumber(drop: DropRow) {
+    const nextDropNumber = Number(draftDropNumber)
+
+    setMessage('')
+    setError('')
+
+    if (!Number.isInteger(nextDropNumber) || nextDropNumber < 1) {
+      setError('Drop No.は1以上の整数で入力してください。')
+      return
+    }
+
+    if (nextDropNumber === drop.drop_number) {
+      cancelEditingDropNumber()
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Drop #${drop.drop_number} を Drop #${nextDropNumber} に変更しますか？\nMissionの配布内容や投稿データは変更されません。`
+    )
+
+    if (!confirmed) return
+
+    setBusyDropId(drop.id)
+
+    const { error: rpcError } = await supabase.rpc(
+      'admin_set_mission_drop_number',
+      {
+        p_drop_id: drop.id,
+        p_drop_number: nextDropNumber,
+      }
+    )
+
+    if (rpcError) {
+      setError(rpcError.message)
+      setBusyDropId(null)
+      return
+    }
+
+    setMessage(
+      `Drop #${drop.drop_number} を Drop #${nextDropNumber} に変更しました。`
+    )
+    setEditingDropId(null)
+    setDraftDropNumber('')
+    setBusyDropId(null)
+    await loadDrops()
   }
 
   async function toggleDropStatus(drop: DropRow) {
@@ -889,12 +950,122 @@ export default function AdminMissions() {
                           >
                             DROP
                           </p>
-                          <div
-                            className="outingSerifEn"
-                            style={{ fontSize: 27, lineHeight: 1.1 }}
-                          >
-                            #{String(drop.drop_number).padStart(2, '0')}
-                          </div>
+                          {editingDropId === drop.id ? (
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 7,
+                                marginTop: 3,
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <span
+                                className="outingSerifEn"
+                                style={{ fontSize: 22, lineHeight: 1 }}
+                              >
+                                #
+                              </span>
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                inputMode="numeric"
+                                value={draftDropNumber}
+                                disabled={busyDropId === drop.id}
+                                onChange={(e) => setDraftDropNumber(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    void saveDropNumber(drop)
+                                  }
+                                  if (e.key === 'Escape') {
+                                    cancelEditingDropNumber()
+                                  }
+                                }}
+                                autoFocus
+                                aria-label={`Drop ${drop.drop_number} の新しい番号`}
+                                style={{
+                                  width: 72,
+                                  padding: '6px 8px',
+                                  borderRadius: 8,
+                                  border: '1px solid rgba(167,139,250,.28)',
+                                  background: 'rgba(139,92,246,.10)',
+                                  color: '#fff',
+                                  outline: 'none',
+                                  fontSize: 16,
+                                  fontWeight: 700,
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void saveDropNumber(drop)}
+                                disabled={busyDropId === drop.id}
+                                style={{
+                                  padding: '6px 9px',
+                                  borderRadius: 8,
+                                  border: '1px solid rgba(167,139,250,.22)',
+                                  background: 'rgba(139,92,246,.16)',
+                                  color: '#c4b5fd',
+                                  fontSize: 9,
+                                  fontWeight: 700,
+                                  cursor: busyDropId === drop.id ? 'default' : 'pointer',
+                                }}
+                              >
+                                {busyDropId === drop.id ? '保存中...' : '保存'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditingDropNumber}
+                                disabled={busyDropId === drop.id}
+                                style={{
+                                  padding: '6px 8px',
+                                  borderRadius: 8,
+                                  border: '1px solid rgba(255,255,255,.10)',
+                                  background: 'rgba(255,255,255,.04)',
+                                  color: 'rgba(255,255,255,.58)',
+                                  fontSize: 9,
+                                  cursor: busyDropId === drop.id ? 'default' : 'pointer',
+                                }}
+                              >
+                                キャンセル
+                              </button>
+                            </div>
+                          ) : (
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 9,
+                                marginTop: 2,
+                              }}
+                            >
+                              <div
+                                className="outingSerifEn"
+                                style={{ fontSize: 27, lineHeight: 1.1 }}
+                              >
+                                #{String(drop.drop_number).padStart(2, '0')}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => startEditingDropNumber(drop)}
+                                disabled={busyDropId === drop.id || editingDropId !== null}
+                                style={{
+                                  padding: '5px 8px',
+                                  borderRadius: 8,
+                                  border: '1px solid rgba(255,255,255,.10)',
+                                  background: 'rgba(255,255,255,.04)',
+                                  color: 'rgba(255,255,255,.58)',
+                                  fontSize: 9,
+                                  cursor:
+                                    busyDropId === drop.id || editingDropId !== null
+                                      ? 'default'
+                                      : 'pointer',
+                                }}
+                              >
+                                番号変更
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         <span
