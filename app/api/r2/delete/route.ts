@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import { DeleteObjectCommand } from '@aws-sdk/client-s3'
+import {
+  DeleteObjectsCommand,
+} from '@aws-sdk/client-s3'
 
 import { createClient } from '@/lib/supabase/server'
 import { r2, R2_BUCKET_NAME } from '@/lib/r2'
@@ -32,15 +34,17 @@ export async function POST(request: Request) {
       )
     }
 
-    // ① 削除前に投稿情報を取得しておく
+    // 削除前に投稿情報を取得
     const { data: post, error: postError } =
       await supabase
         .from('posts')
         .select(`
           id,
+          event_id,
           participant_id,
           storage_provider,
           r2_object_key,
+          r2_thumbnail_key,
           image_path,
           deleted_at
         `)
@@ -54,8 +58,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // ② 本人の投稿か確認
-    const { data: participant, error: participantError } =
+    // 投稿者本人か確認
+    const { data: participant } =
       await supabase
         .from('participants')
         .select('id')
@@ -64,14 +68,37 @@ export async function POST(request: Request) {
         .eq('is_active', true)
         .maybeSingle()
 
-    if (participantError || !participant) {
+    const isOwner = Boolean(participant)
+
+    // Adminか確認
+    const { data: admin } =
+      await supabase
+        .from('admin_users')
+        .select(`
+          id,
+          role,
+          can_manage_photos
+        `)
+        .eq('event_id', post.event_id)
+        .eq('auth_user_id', user.id)
+        .maybeSingle()
+
+    const isAdmin =
+      Boolean(admin) &&
+      (
+        admin?.role === 'owner' ||
+        admin?.role === 'admin' ||
+        admin?.can_manage_photos === true
+      )
+
+    if (!isOwner && !isAdmin) {
       return NextResponse.json(
         { error: 'Forbidden.' },
         { status: 403 },
       )
     }
 
-    // ③ DBをsoft delete
+    // DBをsoft delete
     if (!post.deleted_at) {
       const { error: deleteError } =
         await supabase.rpc('delete_post', {
@@ -91,17 +118,30 @@ export async function POST(request: Request) {
       }
     }
 
-    // ④ R2投稿なら実ファイルも削除
-    if (
-      post.storage_provider === 'r2' &&
-      post.r2_object_key
-    ) {
-      await r2.send(
-        new DeleteObjectCommand({
-          Bucket: R2_BUCKET_NAME,
-          Key: post.r2_object_key,
-        }),
+    // R2なら元画像 + サムネイルを両方削除
+    if (post.storage_provider === 'r2') {
+      const keys = [
+        post.r2_object_key,
+        post.r2_thumbnail_key,
+      ].filter(
+        (key): key is string =>
+          typeof key === 'string' &&
+          key.length > 0,
       )
+
+      if (keys.length > 0) {
+        await r2.send(
+          new DeleteObjectsCommand({
+            Bucket: R2_BUCKET_NAME,
+            Delete: {
+              Objects: keys.map((Key) => ({
+                Key,
+              })),
+              Quiet: true,
+            },
+          }),
+        )
+      }
     }
 
     return NextResponse.json({

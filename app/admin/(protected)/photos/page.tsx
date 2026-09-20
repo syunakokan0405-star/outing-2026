@@ -6,11 +6,13 @@ import { createClient } from '@/lib/supabase/client'
 
 type PostRow = {
   id: string
-  image_path: string
   comment: string | null
   visibility: string
   created_at: string
   participant_id: string
+  storage_provider: string
+  r2_object_key: string | null
+  r2_thumbnail_key: string | null
   participants?: {
     name: string
   } | null
@@ -25,8 +27,10 @@ export default function AdminPhotos() {
   const [posts, setPosts] = useState<PostRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [imageUrls, setImageUrls] =
+    useState<Record<string, string>>({})
+  const [deletingId, setDeletingId] =
+    useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -44,15 +48,18 @@ export default function AdminPhotos() {
       .from('posts')
       .select(`
         id,
-        image_path,
         comment,
         visibility,
         created_at,
         participant_id,
-      participants!posts_participant_id_fkey(name),
-missions!posts_mission_id_fkey(title)
+        storage_provider,
+        r2_object_key,
+        r2_thumbnail_key,
+        participants!posts_participant_id_fkey(name),
+        missions!posts_mission_id_fkey(title)
       `)
       .eq('event_id', eventId)
+      .eq('storage_provider', 'r2')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
 
@@ -65,22 +72,47 @@ missions!posts_mission_id_fkey(title)
     const rows = (data ?? []) as unknown as PostRow[]
     setPosts(rows)
 
-    const paths = rows.map((row) => row.image_path).filter(Boolean)
+    if (rows.length === 0) {
+      setImageUrls({})
+      setLoading(false)
+      return
+    }
 
-    if (paths.length > 0) {
-      const { data: signedData } = await supabase.storage
-        .from('outing-photos')
-        .createSignedUrls(paths, 3600)
-
-      const map: Record<string, string> = {}
-
-      signedData?.forEach((item, index) => {
-        if (item.signedUrl) {
-          map[paths[index]] = item.signedUrl
-        }
+    try {
+      const response = await fetch('/api/r2/read-urls', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postIds: rows.map((post) => post.id),
+        }),
       })
 
-      setSignedUrls(map)
+      if (!response.ok) {
+        const body = await response
+          .json()
+          .catch(() => null)
+
+        throw new Error(
+          body?.error ?? 'R2画像を取得できませんでした。',
+        )
+      }
+
+      const body = (await response.json()) as {
+        urls?: Record<string, string>
+      }
+
+      setImageUrls(body.urls ?? {})
+    } catch (loadError) {
+      console.error('R2 image load error:', loadError)
+
+      setImageUrls({})
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'R2画像を取得できませんでした。',
+      )
     }
 
     setLoading(false)
@@ -92,7 +124,7 @@ missions!posts_mission_id_fkey(title)
 
   async function deletePost(postId: string) {
     const confirmed = window.confirm(
-      'この投稿を削除しますか？\n関連するポイントやMission CLEARも取り消される場合があります。'
+      'この投稿を削除しますか？\n関連するポイントやMission CLEARも取り消される場合があります。',
     )
 
     if (!confirmed) return
@@ -100,18 +132,40 @@ missions!posts_mission_id_fkey(title)
     setDeletingId(postId)
     setError('')
 
-    const { error: deleteError } = await supabase.rpc('delete_post', {
-      p_post_id: postId,
-    })
+    try {
+      const response = await fetch('/api/r2/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postId,
+        }),
+      })
 
-    if (deleteError) {
-      setError(deleteError.message)
+      const body = await response
+        .json()
+        .catch(() => null)
+
+      if (!response.ok) {
+        setError(
+          body?.error ??
+            '投稿を削除できませんでした。',
+        )
+        return
+      }
+
+      await load()
+    } catch (deleteError) {
+      console.error(
+        'R2 post delete error:',
+        deleteError,
+      )
+
+      setError('投稿を削除できませんでした。')
+    } finally {
       setDeletingId(null)
-      return
     }
-
-    await load()
-    setDeletingId(null)
   }
 
   return (
@@ -128,7 +182,10 @@ missions!posts_mission_id_fkey(title)
           ← Dashboard
         </Link>
 
-        <div className="brand" style={{ marginTop: 12 }}>
+        <div
+          className="brand"
+          style={{ marginTop: 12 }}
+        >
           OUTING 2026 ADMIN
         </div>
 
@@ -141,7 +198,9 @@ missions!posts_mission_id_fkey(title)
 
       {error && (
         <section className="card">
-          <b style={{ color: '#d33' }}>{error}</b>
+          <b style={{ color: '#d33' }}>
+            {error}
+          </b>
         </section>
       )}
 
@@ -164,10 +223,12 @@ missions!posts_mission_id_fkey(title)
         >
           {posts.map((post) => (
             <article className="card" key={post.id}>
-              {signedUrls[post.image_path] ? (
+              {imageUrls[post.id] ? (
                 <img
-                  src={signedUrls[post.image_path]}
+                  src={imageUrls[post.id]}
                   alt="投稿写真"
+                  loading="lazy"
+                  decoding="async"
                   style={{
                     width: '100%',
                     borderRadius: 16,
@@ -181,7 +242,10 @@ missions!posts_mission_id_fkey(title)
               )}
 
               <div style={{ marginBottom: 8 }}>
-                <b>{post.participants?.name ?? '参加者'}</b>
+                <b>
+                  {post.participants?.name ??
+                    '参加者'}
+                </b>
               </div>
 
               {post.missions?.title && (
@@ -191,11 +255,16 @@ missions!posts_mission_id_fkey(title)
               )}
 
               <div className="muted">
-                公開先: {post.visibility === 'stream' ? 'Stream' : 'Gallery'}
+                公開先:{' '}
+                {post.visibility === 'stream'
+                  ? 'Stream'
+                  : 'Gallery'}
               </div>
 
               <div className="muted">
-                {new Date(post.created_at).toLocaleString('ja-JP')}
+                {new Date(
+                  post.created_at,
+                ).toLocaleString('ja-JP')}
               </div>
 
               {post.comment && (
@@ -208,7 +277,9 @@ missions!posts_mission_id_fkey(title)
                   marginTop: 12,
                   color: '#d33',
                 }}
-                onClick={() => void deletePost(post.id)}
+                onClick={() =>
+                  void deletePost(post.id)
+                }
                 disabled={deletingId === post.id}
               >
                 {deletingId === post.id
