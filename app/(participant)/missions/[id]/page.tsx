@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import PersistentMissionImage from '@/components/PersistentMissionImage'
 
 type PageProps = {
   params: Promise<{
@@ -325,18 +326,24 @@ export default async function MissionDetail({
               '0 24px 60px rgba(0,0,0,.30)',
           }}
         >
-          <img
-            src={missionImageUrl}
-            alt=""
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
-          />
-
+         <div
+  style={{
+    position: 'absolute',
+    inset: 0,
+  }}
+>
+  <PersistentMissionImage
+    missionId={mission.id}
+    src={missionImageUrl}
+    alt=""
+    style={{
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+      display: 'block',
+    }}
+  />
+</div>
           <div
             style={{
               position: 'absolute',

@@ -14,6 +14,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import PersistentMissionImage from '@/components/PersistentMissionImage'
 
 type MissionItem = {
   assignmentId: string
@@ -562,19 +563,24 @@ return (
                   >
                     {/* PHOTO */}
 
-                    <img
-                      src={mission.imageUrl}
-                      alt=""
-                      style={{
-                        position:
-                          'absolute',
-                        inset: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        display: 'block',
-                      }}
-                    />
+                  <div
+  style={{
+    position: 'absolute',
+    inset: 0,
+  }}
+>
+  <PersistentMissionImage
+    missionId={mission.id}
+    src={mission.imageUrl}
+    alt=""
+    style={{
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+      display: 'block',
+    }}
+  />
+</div>
 
                     {/* DARK GRADIENT */}
 
