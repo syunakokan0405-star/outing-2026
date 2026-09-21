@@ -703,55 +703,79 @@ export default function LivePosts({
     void refreshPostHearts(post.id)
   }
 
-  async function downloadPhoto(post: UserFeedItem) {
+async function downloadPhoto(post: UserFeedItem) {
+  try {
+    let imageUrl = ''
+
     if (post.storage_provider === 'r2') {
-      try {
-        const response = await fetch('/api/r2/read-url', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            postId: post.id,
-          }),
-        })
+      const response = await fetch('/api/r2/read-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postId: post.id,
+        }),
+      })
 
-        if (!response.ok) {
-          setError('ダウンロードURLを作成できませんでした。')
-          return
-        }
-
-        const data = (await response.json()) as {
-          signedUrl?: string
-        }
-
-        if (!data.signedUrl) {
-          setError('ダウンロードURLを作成できませんでした。')
-          return
-        }
-
-        window.location.assign(data.signedUrl)
-        return
-      } catch {
+      if (!response.ok) {
         setError('ダウンロードURLを作成できませんでした。')
         return
       }
+
+      const data = (await response.json()) as {
+        signedUrl?: string
+      }
+
+      if (!data.signedUrl) {
+        setError('ダウンロードURLを作成できませんでした。')
+        return
+      }
+
+      imageUrl = data.signedUrl
+    } else {
+      const { data, error: downloadError } =
+        await supabase.storage
+          .from('outing-photos')
+          .createSignedUrl(post.image_path, 60)
+
+      if (downloadError || !data?.signedUrl) {
+        setError(
+          downloadError?.message ??
+            'ダウンロードURLを作成できませんでした.',
+        )
+        return
+      }
+
+      imageUrl = data.signedUrl
     }
 
-    const { data, error: downloadError } =
-      await supabase.storage
-        .from('outing-photos')
-        .createSignedUrl(post.image_path, 60, { download: true })
+    const imageResponse = await fetch(imageUrl)
 
-    if (downloadError || !data?.signedUrl) {
-      setError(
-        downloadError?.message ??
-          'ダウンロードURLを作成できませんでした。',
-      )
+    if (!imageResponse.ok) {
+      setError('写真を取得できませんでした。')
       return
     }
-    window.location.assign(data.signedUrl)
+
+    const blob = await imageResponse.blob()
+    const objectUrl = URL.createObjectURL(blob)
+
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = `outing-${post.id}.webp`
+
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+
+    setTimeout(() => {
+      URL.revokeObjectURL(objectUrl)
+    }, 1000)
+  } catch (error) {
+    console.error('Photo download error:', error)
+    setError('写真を保存できませんでした。')
   }
+}
 
   async function editComment(post: UserFeedItem) {
     if (!post.mine) return
