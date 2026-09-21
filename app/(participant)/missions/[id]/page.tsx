@@ -117,6 +117,7 @@ export default async function MissionDetail({
         difficulty,
         points,
         required_mentions,
+        image_path,
         drop:mission_drops (
           event_id,
           status,
@@ -208,6 +209,18 @@ export default async function MissionDetail({
     drop.status !== 'published'
   ) {
     redirect('/missions')
+  }
+
+  let missionImageUrl = '/mission-default.jpg'
+
+  if (mission.image_path) {
+    const { data: signedImage } = await supabase.storage
+      .from('outing-photos')
+      .createSignedUrl(mission.image_path, 60 * 60)
+
+    if (signedImage?.signedUrl) {
+      missionImageUrl = signedImage.signedUrl
+    }
   }
 
   const cleared = Boolean(
@@ -313,7 +326,7 @@ export default async function MissionDetail({
           }}
         >
           <img
-            src="/mission-default.jpg"
+            src={missionImageUrl}
             alt=""
             style={{
               position: 'absolute',
