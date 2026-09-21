@@ -366,7 +366,7 @@ export default function AdminMissions() {
     void loadDrops()
   }, [])
 
-  async function createDrop() {
+  async function createCommonDrop() {
     setMessage('')
     setError('')
 
@@ -375,8 +375,8 @@ export default function AdminMissions() {
       return
     }
 
-    if (missions.some((mission) => !mission.title.trim())) {
-      setError('3分割Mission名をすべて入力してください。')
+    if (commonMissions.length === 0) {
+      setError('共通お題を1件以上追加してください。')
       return
     }
 
@@ -386,7 +386,7 @@ export default function AdminMissions() {
     }
 
     if (
-      [...missions, ...commonMissions].some(
+      commonMissions.some(
         (mission) =>
           mission.points < 0 ||
           mission.required_mentions < 0
@@ -397,7 +397,7 @@ export default function AdminMissions() {
     }
 
     const confirmed = window.confirm(
-      `共通Mission ${commonMissions.length}件 + 3分割Mission 3件を参加者へ配布します。\n公開後すぐに参加者へ表示されます。\n\n実行しますか？`
+      `共通Mission ${commonMissions.length}件を参加者全員へ配布します。\n公開後すぐに参加者へ表示されます。\n\n実行しますか？`
     )
 
     if (!confirmed) return
@@ -405,23 +405,7 @@ export default function AdminMissions() {
     setCreating(true)
 
     try {
-      const uploadKey =
-        `${Date.now()}-${crypto.randomUUID()}`
-
-      const missionsWithImages = await Promise.all(
-        missions.map(async (mission, index) => {
-          const file = missionImages[index]?.file
-
-          const imagePath = file
-            ? await uploadMissionImage(index, file, uploadKey)
-            : null
-
-          return {
-            ...mission,
-            image_path: imagePath,
-          }
-        })
-      )
+      const uploadKey = `${Date.now()}-${crypto.randomUUID()}`
 
       const commonMissionsWithImages = await Promise.all(
         commonMissions.map(async (mission, index) => {
@@ -439,10 +423,9 @@ export default function AdminMissions() {
       )
 
       const { data, error: rpcError } = await supabase.rpc(
-        'create_mission_drop',
+        'create_common_mission_drop',
         {
           p_event_id: eventId,
-          p_missions: missionsWithImages,
           p_common_missions: commonMissionsWithImages,
         }
       )
@@ -451,20 +434,7 @@ export default function AdminMissions() {
         throw rpcError
       }
 
-      setMessage(`Mission Dropを配布しました。Drop ID: ${data}`)
-
-      setMissionImages((current) => {
-        current.forEach((image) => {
-          if (image.previewUrl) {
-            URL.revokeObjectURL(image.previewUrl)
-          }
-        })
-
-        return initialMissions.map(() => ({
-          file: null,
-          previewUrl: null,
-        }))
-      })
+      setMessage(`共通Missionを配布しました。Drop ID: ${data}`)
 
       setCommonMissionImages((current) => {
         current.forEach((image) => {
@@ -481,7 +451,97 @@ export default function AdminMissions() {
       setError(
         err instanceof Error
           ? err.message
-          : 'Mission Dropの配布に失敗しました。'
+          : '共通Missionの配布に失敗しました。'
+      )
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  async function createSplitDrop() {
+    setMessage('')
+    setError('')
+
+    if (!eventId) {
+      setError('EVENT IDが設定されていません。')
+      return
+    }
+
+    if (missions.some((mission) => !mission.title.trim())) {
+      setError('3分割Mission名をすべて入力してください。')
+      return
+    }
+
+    if (
+      missions.some(
+        (mission) =>
+          mission.points < 0 ||
+          mission.required_mentions < 0
+      )
+    ) {
+      setError('得点・必要メンション人数を確認してください。')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `3分割Mission A / B / Cを参加者へ配布します。\nSmart Shuffleで均等に配布されます。\n\n実行しますか？`
+    )
+
+    if (!confirmed) return
+
+    setCreating(true)
+
+    try {
+      const uploadKey = `${Date.now()}-${crypto.randomUUID()}`
+
+      const missionsWithImages = await Promise.all(
+        missions.map(async (mission, index) => {
+          const file = missionImages[index]?.file
+
+          const imagePath = file
+            ? await uploadMissionImage(index, file, uploadKey)
+            : null
+
+          return {
+            ...mission,
+            image_path: imagePath,
+          }
+        })
+      )
+
+      const { data, error: rpcError } = await supabase.rpc(
+        'create_split_mission_drop',
+        {
+          p_event_id: eventId,
+          p_missions: missionsWithImages,
+        }
+      )
+
+      if (rpcError) {
+        throw rpcError
+      }
+
+      setMessage(`3分割Missionを配布しました。Drop ID: ${data}`)
+
+      setMissionImages((current) => {
+        current.forEach((image) => {
+          if (image.previewUrl) {
+            URL.revokeObjectURL(image.previewUrl)
+          }
+        })
+
+        return initialMissions.map(() => ({
+          file: null,
+          previewUrl: null,
+        }))
+      })
+
+      await loadDrops()
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : '3分割Missionの配布に失敗しました。'
       )
     } finally {
       setCreating(false)
@@ -1037,6 +1097,38 @@ export default function AdminMissions() {
               ))}
             </div>
           )}
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              marginTop: 14,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => void createCommonDrop()}
+              disabled={creating || commonMissions.length === 0}
+              style={{
+                minWidth: 180,
+                padding: '12px 18px',
+                border: 0,
+                borderRadius: 12,
+                background:
+                  creating || commonMissions.length === 0
+                    ? 'rgba(139,92,246,.28)'
+                    : '#7c3aed',
+                color: '#fff',
+                fontWeight: 700,
+                cursor:
+                  creating || commonMissions.length === 0
+                    ? 'default'
+                    : 'pointer',
+              }}
+            >
+              {creating ? '配布中...' : '共通お題を配布'}
+            </button>
+          </div>
         </section>
 
         <section style={{ marginBottom: 30 }}>
@@ -1313,62 +1405,32 @@ export default function AdminMissions() {
               </div>
             ))}
           </div>
-        </section>
 
-        <section
-          style={{
-            ...cardStyle,
-            padding: 20,
-            marginBottom: 38,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 18,
-          }}
-        >
-          <div>
-            <p
-              className="outingSerifEn"
-              style={{
-                margin: 0,
-                color: '#b9a4ff',
-                fontSize: 10,
-                letterSpacing: '.14em',
-              }}
-            >
-              SMART SHUFFLE
-            </p>
-            <h3 style={{ margin: '5px 0 0', fontSize: 16 }}>
-              参加者へMissionを配布
-            </h3>
-            <p
-              style={{
-                margin: '6px 0 0',
-                color: 'rgba(255,255,255,.40)',
-                fontSize: 11,
-              }}
-            >
-              共通お題は全員へ、A・B・Cは均等に配布し過去のMissionも考慮します。
-            </p>
-          </div>
-
-          <button
-            onClick={() => void createDrop()}
-            disabled={creating}
+          <div
             style={{
-              minWidth: 160,
-              padding: '12px 18px',
-              border: 0,
-              borderRadius: 12,
-              background: creating ? 'rgba(139,92,246,.35)' : '#7c3aed',
-              color: '#fff',
-              fontWeight: 700,
-              cursor: creating ? 'default' : 'pointer',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              marginTop: 14,
             }}
           >
-            {creating ? '配布中...' : 'Dropを配布'}
-          </button>
+            <button
+              type="button"
+              onClick={() => void createSplitDrop()}
+              disabled={creating}
+              style={{
+                minWidth: 180,
+                padding: '12px 18px',
+                border: 0,
+                borderRadius: 12,
+                background: creating ? 'rgba(139,92,246,.35)' : '#7c3aed',
+                color: '#fff',
+                fontWeight: 700,
+                cursor: creating ? 'default' : 'pointer',
+              }}
+            >
+              {creating ? '配布中...' : '3分割お題を配布'}
+            </button>
+          </div>
         </section>
 
         <section>
