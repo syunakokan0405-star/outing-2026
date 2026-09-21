@@ -590,6 +590,39 @@ export default function AdminMissions() {
     await loadDrops()
   }
 
+  async function deleteDrop(drop: DropRow) {
+    const confirmed = window.confirm(
+      `Drop #${drop.drop_number} を削除しますか？\nこの操作は取り消せません。`
+    )
+
+    if (!confirmed) return
+
+    setBusyDropId(drop.id)
+    setError('')
+    setMessage('')
+
+    const { error: rpcError } = await supabase.rpc(
+      'admin_delete_mission_drop',
+      {
+        p_drop_id: drop.id,
+      }
+    )
+
+    if (rpcError) {
+      setError(rpcError.message)
+      setBusyDropId(null)
+      return
+    }
+
+    setMessage(`Drop #${drop.drop_number} を削除しました。`)
+    if (editingDropId === drop.id) {
+      setEditingDropId(null)
+      setDraftDropNumber('')
+    }
+    setBusyDropId(null)
+    await loadDrops()
+  }
+
   const inputStyle = {
     width: '100%',
     boxSizing: 'border-box' as const,
@@ -1591,6 +1624,23 @@ export default function AdminMissions() {
                             : published
                               ? '停止'
                               : '再公開'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void deleteDrop(drop)}
+                          disabled={busyDropId === drop.id}
+                          style={{
+                            padding: '9px 13px',
+                            borderRadius: 10,
+                            border: '1px solid rgba(248,113,113,.22)',
+                            background: 'rgba(248,113,113,.07)',
+                            color: '#fca5a5',
+                            fontWeight: 700,
+                            cursor: busyDropId === drop.id ? 'default' : 'pointer',
+                          }}
+                        >
+                          {busyDropId === drop.id ? '処理中...' : '削除'}
                         </button>
                       </div>
                     </div>
