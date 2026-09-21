@@ -203,7 +203,7 @@ export default function Missions() {
               )
             `)
             .eq('participant_id', participant.participant_id)
-            .order('created_at', { ascending: false })
+            .order('created_at', { ascending: true })
 
         if (assignmentError) throw assignmentError
 
