@@ -29,7 +29,7 @@ type ParticipantOption = {
 };
 
 const MAX_SIDE = 1800;
-const WEBP_QUALITY = 0.82;
+const WEBP_QUALITY = 0.90;
 const MAX_COMMENT = 30;
 
 function formatBytes(bytes: number) {

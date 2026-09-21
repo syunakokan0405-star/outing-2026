@@ -21,8 +21,8 @@ type R2UploadResult = {
   thumbnailKey: string
 }
 
-const THUMBNAIL_MAX_SIDE = 480
-const THUMBNAIL_QUALITY = 0.7
+const THUMBNAIL_MAX_SIDE = 960
+const THUMBNAIL_QUALITY = 0.82
 
 function looksLikeNetworkError(error: unknown) {
   if (

@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 
-const CACHE_NAME = 'outing-post-images-v1'
+const CACHE_NAME = 'outing-post-images-v3'
 
 type Props = {
   postId: string

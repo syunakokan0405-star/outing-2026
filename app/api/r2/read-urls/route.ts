@@ -72,15 +72,15 @@ export async function POST(request: Request) {
       (posts ?? [])
         .filter(
           (post) =>
-            post.r2_thumbnail_key ||
-            post.r2_object_key,
+            post.r2_object_key ||
+            post.r2_thumbnail_key,
         )
         .map(async (post) => {
-          // 新投稿 → 480pxサムネ
-          // 旧投稿 → 元画像へフォールバック
+          // Streamでは高画質な元画像を優先。
+          // 元画像がない場合のみサムネイルへフォールバック。
           const displayKey =
-            post.r2_thumbnail_key ??
-            post.r2_object_key
+            post.r2_object_key ??
+            post.r2_thumbnail_key
 
           const command = new GetObjectCommand({
             Bucket: R2_BUCKET_NAME,
