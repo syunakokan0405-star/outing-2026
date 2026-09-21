@@ -27,6 +27,7 @@ type MissionRow = {
   difficulty: string
   points: number
   required_mentions: number
+  image_path: string | null
   mission_assignments?: AssignmentRow[]
 }
 
@@ -89,6 +90,16 @@ export default function AdminMissions() {
   const [error, setError] = useState('')
 
   const eventId = process.env.NEXT_PUBLIC_EVENT_ID
+
+  function getMissionImageUrl(imagePath: string | null) {
+    if (!imagePath) return '/mission-default.jpg'
+
+    const { data } = supabase.storage
+      .from('outing-photos')
+      .getPublicUrl(imagePath)
+
+    return data.publicUrl
+  }
 
   function updateMission(
     index: number,
@@ -331,6 +342,7 @@ export default function AdminMissions() {
           difficulty,
           points,
           required_mentions,
+          image_path,
           mission_assignments (
             id,
             first_cleared_at
@@ -1643,10 +1655,34 @@ export default function AdminMissions() {
                                 </span>
                               </div>
 
+                              <div
+                                style={{
+                                  marginTop: 12,
+                                  aspectRatio: '16 / 9',
+                                  overflow: 'hidden',
+                                  borderRadius: 12,
+                                  border: '1px solid rgba(255,255,255,.07)',
+                                  background: 'rgba(0,0,0,.18)',
+                                }}
+                              >
+                                <img
+                                  src={getMissionImageUrl(mission.image_path)}
+                                  alt={`${mission.title} background`}
+                                  loading="lazy"
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                    opacity: mission.image_path ? 1 : 0.58,
+                                  }}
+                                />
+                              </div>
+
                               <h3
                                 className="outingSerifJa"
                                 style={{
-                                  margin: '9px 0 0',
+                                  margin: '11px 0 0',
                                   fontSize: 15,
                                   fontWeight: 400,
                                 }}
