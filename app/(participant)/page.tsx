@@ -22,6 +22,7 @@ type MissionRow = {
   points: number
   dropNumber: number
   cleared: boolean
+  imagePath: string | null
 }
 
 type AnnouncementRow = {
@@ -40,8 +41,8 @@ type HomeCache = {
   announcementBackgroundPath: string
 }
 
-const HOME_CACHE_VERSION = 'outing-home-v2'
-const UI_IMAGE_CACHE_NAME = 'outing-ui-images-v1'
+const HOME_CACHE_VERSION = 'outing-home-v4'
+const UI_IMAGE_CACHE_NAME = 'outing-ui-images-v2'
 const homeMemoryCache = new Map<string, HomeCache>()
 
 async function getCachedHomeImage(
@@ -127,6 +128,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [announcementBackgroundUrl, setAnnouncementBackgroundUrl] =
     useState('/outing-bg.jpg')
+  const [missionImageUrl, setMissionImageUrl] =
+    useState('/mission-default.jpg')
 
   useEffect(() => {
     if (!eventId) {
@@ -237,6 +240,7 @@ export default function Home() {
                   title,
                   difficulty,
                   points,
+                  image_path,
                   drop:mission_drops (
                     event_id,
                     status,
@@ -299,6 +303,7 @@ export default function Home() {
                 points: mission.points,
                 dropNumber: drop.drop_number,
                 cleared: Boolean(assignment.first_cleared_at),
+                imagePath: mission.image_path ?? null,
               }
             })
             .filter(
@@ -307,7 +312,7 @@ export default function Home() {
             )
 
         freshMissions.sort(
-          (a, b) => b.dropNumber - a.dropNumber,
+          (a, b) => a.dropNumber - b.dropNumber,
         )
 
         const nextAnnouncements = announcementResult.error
@@ -363,7 +368,55 @@ export default function Home() {
     }
   }, [eventId, supabase])
 
-  const currentMission = normalizedMissions[0] ?? null
+  const currentMission =
+    normalizedMissions.find((mission) => !mission.cleared) ?? null
+
+  useEffect(() => {
+    let cancelled = false
+    let missionObjectUrl: string | null = null
+
+    async function applyMissionImage() {
+      const imagePath = currentMission?.imagePath
+
+      if (!imagePath) {
+        setMissionImageUrl('/mission-default.jpg')
+        return
+      }
+
+      const { data, error } = await supabase.storage
+        .from('outing-photos')
+        .createSignedUrl(imagePath, 60 * 60)
+
+      if (error || !data?.signedUrl || cancelled) {
+        if (!cancelled) setMissionImageUrl('/mission-default.jpg')
+        return
+      }
+
+      try {
+        const url = await getCachedHomeImage(
+          `mission:${currentMission.id}:${imagePath}`,
+          data.signedUrl,
+        )
+
+        if (cancelled) {
+          if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+          return
+        }
+
+        missionObjectUrl = url.startsWith('blob:') ? url : null
+        setMissionImageUrl(url)
+      } catch {
+        if (!cancelled) setMissionImageUrl(data.signedUrl)
+      }
+    }
+
+    void applyMissionImage()
+
+    return () => {
+      cancelled = true
+      if (missionObjectUrl) URL.revokeObjectURL(missionObjectUrl)
+    }
+  }, [currentMission?.id, currentMission?.imagePath, supabase])
 
   if (!eventId) {
     return (
@@ -668,7 +721,7 @@ return (
           ) : currentMission ? (
             <article className="photoCard">
               <img
-                src="/mission-default.jpg"
+                src={missionImageUrl}
                 alt=""
                 className="photoCardImage"
               />
