@@ -43,7 +43,7 @@ async function createCroppedImage(
 
   const canvas = document.createElement('canvas')
   const size = Math.min(
-    1024,
+    512,
     Math.max(crop.width, crop.height),
   )
 
@@ -84,11 +84,110 @@ async function createCroppedImage(
             )
           }
         },
-        'image/jpeg',
-        0.9,
+        'image/webp',
+        0.82,
       )
     },
   )
+}
+
+const AVATAR_CACHE_NAME = 'outing-avatar-images-v1'
+
+function avatarCacheRequest(participantId: string) {
+  return new Request(
+    `${window.location.origin}/__avatar-cache__/${participantId}`,
+  )
+}
+
+async function readCachedAvatar(
+  participantId: string,
+): Promise<string | null> {
+  if (
+    typeof window === 'undefined' ||
+    !('caches' in window)
+  ) {
+    return null
+  }
+
+  try {
+    const cache = await caches.open(AVATAR_CACHE_NAME)
+    const response = await cache.match(
+      avatarCacheRequest(participantId),
+    )
+
+    if (!response) return null
+
+    const blob = await response.blob()
+    return URL.createObjectURL(blob)
+  } catch {
+    return null
+  }
+}
+
+async function writeCachedAvatar(
+  participantId: string,
+  blob: Blob,
+): Promise<string> {
+  const objectUrl = URL.createObjectURL(blob)
+
+  if (
+    typeof window === 'undefined' ||
+    !('caches' in window)
+  ) {
+    return objectUrl
+  }
+
+  try {
+    const cache = await caches.open(AVATAR_CACHE_NAME)
+    await cache.put(
+      avatarCacheRequest(participantId),
+      new Response(blob, {
+        headers: {
+          'Content-Type': blob.type || 'image/webp',
+        },
+      }),
+    )
+  } catch {
+    // Cache failure must never block avatar display.
+  }
+
+  return objectUrl
+}
+
+async function fetchAndCacheAvatar(
+  participantId: string,
+  signedUrl: string,
+): Promise<string | null> {
+  try {
+    const response = await fetch(signedUrl)
+    if (!response.ok) return null
+
+    const blob = await response.blob()
+    return await writeCachedAvatar(participantId, blob)
+  } catch {
+    return null
+  }
+}
+
+async function getR2AvatarUrls(
+  participantIds: string[],
+): Promise<Record<string, string>> {
+  if (!participantIds.length) return {}
+
+  const response = await fetch('/api/r2/avatar-read-urls', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ participantIds }),
+  })
+
+  if (!response.ok) {
+    throw new Error('プロフィール画像URLを取得できませんでした。')
+  }
+
+  const data = await response.json()
+  return data.urls ?? {}
 }
 
 type ConnectionPerson = {
@@ -283,17 +382,37 @@ export default function Me() {
       setName(participant.name)
 
       if (participant.avatar_path) {
-        const { data } =
-          await supabase.storage
-            .from('outing-photos')
-            .createSignedUrl(
-              participant.avatar_path,
-              60 * 60,
-            )
+        const cachedAvatar =
+          await readCachedAvatar(participant.id)
 
-        setAvatarUrl(
-          data?.signedUrl ?? null,
-        )
+        if (cachedAvatar) {
+          setAvatarUrl(cachedAvatar)
+        } else {
+          try {
+            const urls = await getR2AvatarUrls([
+              participant.id,
+            ])
+
+            const signedUrl = urls[participant.id]
+
+            if (signedUrl) {
+              const localUrl =
+                await fetchAndCacheAvatar(
+                  participant.id,
+                  signedUrl,
+                )
+
+              setAvatarUrl(localUrl)
+            }
+          } catch (error) {
+            console.error(
+              'Could not load R2 avatar:',
+              error,
+            )
+          }
+        }
+      } else {
+        setAvatarUrl(null)
       }
 
       const { data: points } =
@@ -429,22 +548,46 @@ export default function Me() {
 
       if (peopleError) throw peopleError
 
+      const peopleWithAvatars = (people ?? []).filter(
+        (person: any) => Boolean(person.avatar_path),
+      )
+
+      let r2AvatarUrls: Record<string, string> = {}
+
+      if (peopleWithAvatars.length) {
+        try {
+          r2AvatarUrls = await getR2AvatarUrls(
+            peopleWithAvatars.map(
+              (person: any) => person.id,
+            ),
+          )
+        } catch (error) {
+          console.error(
+            'Could not load connection avatar URLs:',
+            error,
+          )
+        }
+      }
+
       const withAvatars = await Promise.all(
         (people ?? []).map(async (person: any) => {
-          let signedAvatarUrl: string | null = null
+          let avatarUrl: string | null = null
 
           if (person.avatar_path) {
-            const { data } = await supabase.storage
-              .from('outing-photos')
-              .createSignedUrl(person.avatar_path, 60 * 60)
+            avatarUrl = await readCachedAvatar(person.id)
 
-            signedAvatarUrl = data?.signedUrl ?? null
+            if (!avatarUrl && r2AvatarUrls[person.id]) {
+              avatarUrl = await fetchAndCacheAvatar(
+                person.id,
+                r2AvatarUrls[person.id],
+              )
+            }
           }
 
           return {
             id: person.id,
             name: person.name,
-            avatarUrl: signedAvatarUrl,
+            avatarUrl,
           } satisfies ConnectionPerson
         }),
       )
@@ -529,46 +672,73 @@ export default function Me() {
           croppedAreaPixels,
         )
 
-      const path =
-        `avatars/${participantId}/avatar.jpg`
+      const uploadResponse = await fetch(
+        '/api/r2/avatar-upload-url',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            eventId,
+            participantId,
+          }),
+        },
+      )
 
-      const { error: uploadError } =
-        await supabase.storage
-          .from('outing-photos')
-          .upload(path, blob, {
-            upsert: true,
-            contentType: 'image/jpeg',
-            cacheControl: '3600',
-          })
+      if (!uploadResponse.ok) {
+        const uploadData = await uploadResponse
+          .json()
+          .catch(() => null)
 
-      if (uploadError) {
-        throw uploadError
+        throw new Error(
+          uploadData?.error ??
+            'プロフィール写真のアップロードURLを取得できませんでした。',
+        )
+      }
+
+      const { uploadUrl, key } =
+        await uploadResponse.json()
+
+      if (!uploadUrl || !key) {
+        throw new Error(
+          'プロフィール写真のアップロード情報が不正です。',
+        )
+      }
+
+      const r2UploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'image/webp',
+        },
+        body: blob,
+      })
+
+      if (!r2UploadResponse.ok) {
+        throw new Error(
+          'R2へプロフィール写真をアップロードできませんでした。',
+        )
       }
 
       /*
-       * avatar_path を参加者本人に保存。
-       * set_my_avatar RPC がある場合は
-       * そちらを優先する。
+       * R2 object key をavatar_pathへ保存。
+       * set_my_avatar RPC がある場合はそちらを優先。
        */
       const { error: rpcError } =
         await supabase.rpc(
           'set_my_avatar',
           {
             p_event_id: eventId,
-            p_avatar_path: path,
+            p_avatar_path: key,
           },
         )
 
       if (rpcError) {
-        /*
-         * RPC未作成の場合にも動かせるよう
-         * participants UPDATEへフォールバック。
-         */
         const { error: updateError } =
           await supabase
             .from('participants')
             .update({
-              avatar_path: path,
+              avatar_path: key,
             })
             .eq('id', participantId)
 
@@ -577,23 +747,15 @@ export default function Me() {
         }
       }
 
-      const { data, error: urlError } =
-        await supabase.storage
-          .from('outing-photos')
-          .createSignedUrl(
-            path,
-            60 * 60,
-          )
+      // UploadしたBlobをそのまま端末へ永続保存。
+      // R2から再ダウンロードせず即座に新しいavatarを表示する。
+      const localAvatarUrl =
+        await writeCachedAvatar(
+          participantId,
+          blob,
+        )
 
-      if (urlError) {
-        throw urlError
-      }
-
-      setAvatarUrl(
-        data?.signedUrl
-          ? `${data.signedUrl}&v=${Date.now()}`
-          : null,
-      )
+      setAvatarUrl(localAvatarUrl)
 
       const { data: bonusPoints, error: bonusError } =
         await supabase.rpc(
