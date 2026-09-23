@@ -791,8 +791,9 @@ return (
 
                     color: '#fff',
 
-                    fontSize: 24,
+                    fontSize: 21,
                     fontWeight: 400,
+                    letterSpacing: '.015em',
 
                     lineHeight: 1.45,
                   }}
@@ -857,17 +858,32 @@ return (
 
                 <Link
                   href="/missions"
-                  className="uiPrimaryButton outingSans"
+                  className="outingSans"
                   style={{
-                    marginTop: 18,
-                    alignSelf:
-                      'flex-start',
+                    marginTop: 17,
+                    alignSelf: 'flex-start',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    minHeight: 38,
+                    padding: '0 15px',
+                    borderRadius: 999,
+                    border: '1px solid rgba(255,255,255,.16)',
+                    background: 'rgba(8,9,13,.52)',
+                    color: 'rgba(255,255,255,.88)',
+                    boxShadow:
+                      '0 8px 22px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.04)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    textDecoration: 'none',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: '.025em',
                   }}
                 >
                   Missionを見る
-                  <ArrowRight
-                    size={17}
-                  />
+                  <ArrowRight size={14} strokeWidth={1.7} />
                 </Link>
               </div>
             </article>

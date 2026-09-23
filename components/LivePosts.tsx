@@ -23,6 +23,7 @@ type PostRow = {
   image_path: string
   storage_provider: 'supabase' | 'r2'
   r2_object_key: string | null
+  r2_thumbnail_key: string | null
   comment: string | null
   visibility: 'stream' | 'gallery'
   created_at: string
@@ -110,12 +111,15 @@ async function signedUrlMap(
   return map
 }
 
-async function r2ReadUrlMap(posts: PostRow[]) {
+async function r2ReadUrlMap(
+  posts: PostRow[],
+  variant: 'original' | 'thumbnail',
+) {
   const postIds = posts
     .filter(
       (post) =>
         post.storage_provider === 'r2' &&
-        post.r2_object_key,
+        (post.r2_object_key || post.r2_thumbnail_key),
     )
     .map((post) => post.id)
 
@@ -131,6 +135,7 @@ async function r2ReadUrlMap(posts: PostRow[]) {
       },
       body: JSON.stringify({
         postIds,
+        variant,
       }),
     })
 
@@ -228,6 +233,7 @@ export default function LivePosts({
         image_path,
         storage_provider,
         r2_object_key,
+        r2_thumbnail_key,
         comment,
         visibility,
         created_at,
@@ -315,7 +321,7 @@ export default function LivePosts({
 
     const [urls, r2Urls] = await Promise.all([
       signedUrlMap(supabase, paths),
-      r2ReadUrlMap(rows),
+      r2ReadUrlMap(rows, mode === 'stream' ? 'original' : 'thumbnail'),
     ])
 
     const participantItems: UserFeedItem[] =
@@ -381,7 +387,7 @@ export default function LivePosts({
       const { data, error: moreError } = await supabase
         .from('posts')
         .select(`
-          id,event_id,participant_id,mission_id,image_path,storage_provider,r2_object_key,
+          id,event_id,participant_id,mission_id,image_path,storage_provider,r2_object_key,r2_thumbnail_key,
           comment,visibility,created_at,
           participants!posts_participant_id_fkey(name,avatar_path),
           missions(title,points,difficulty),
@@ -407,7 +413,7 @@ export default function LivePosts({
       ]
       const [urls, r2Urls] = await Promise.all([
         signedUrlMap(supabase, paths),
-        r2ReadUrlMap(rows),
+        r2ReadUrlMap(rows, 'original'),
       ])
       const nextItems: UserFeedItem[] = rows.map((post) => ({
         ...post,
@@ -453,7 +459,7 @@ export default function LivePosts({
     const { data, error: postError } = await supabase
       .from('posts')
       .select(`
-        id,event_id,participant_id,mission_id,image_path,storage_provider,r2_object_key,
+        id,event_id,participant_id,mission_id,image_path,storage_provider,r2_object_key,r2_thumbnail_key,
         comment,visibility,created_at,
         participants!posts_participant_id_fkey(name,avatar_path),
         missions(title,points,difficulty),
@@ -474,7 +480,7 @@ export default function LivePosts({
     ].filter(Boolean)
     const [urls, r2Urls] = await Promise.all([
       signedUrlMap(supabase, paths),
-      r2ReadUrlMap([post]),
+      r2ReadUrlMap([post], 'original'),
     ])
     const nextItem: UserFeedItem = {
       ...post,
@@ -1166,7 +1172,7 @@ async function downloadPhoto(post: UserFeedItem) {
             >
               {post.signedUrl ? (
                 <PersistentPostImage
-                  postId={post.id}
+                  postId={`gallery-thumb:${post.id}`}
                   src={post.signedUrl}
                   alt={`${
                     post.participants
@@ -1391,7 +1397,7 @@ async function downloadPhoto(post: UserFeedItem) {
             >
               {post.signedUrl ? (
                 <PersistentPostImage
-                  postId={post.id}
+                  postId={`stream-original:${post.id}`}
                   src={post.signedUrl}
                   alt={`${
                     post.participants

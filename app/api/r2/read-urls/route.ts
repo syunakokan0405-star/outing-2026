@@ -7,6 +7,8 @@ import { r2, R2_BUCKET_NAME } from '@/lib/r2'
 
 export const runtime = 'nodejs'
 
+type ImageVariant = 'original' | 'thumbnail'
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -34,6 +36,11 @@ export async function POST(request: Request) {
           ),
         ]
       : []
+
+    const variant: ImageVariant =
+      body.variant === 'thumbnail'
+        ? 'thumbnail'
+        : 'original'
 
     if (!postIds.length) {
       return NextResponse.json({ urls: {} })
@@ -76,11 +83,12 @@ export async function POST(request: Request) {
             post.r2_thumbnail_key,
         )
         .map(async (post) => {
-          // Streamでは高画質な元画像を優先。
-          // 元画像がない場合のみサムネイルへフォールバック。
           const displayKey =
-            post.r2_object_key ??
-            post.r2_thumbnail_key
+            variant === 'thumbnail'
+              ? post.r2_thumbnail_key ??
+                post.r2_object_key
+              : post.r2_object_key ??
+                post.r2_thumbnail_key
 
           const command = new GetObjectCommand({
             Bucket: R2_BUCKET_NAME,

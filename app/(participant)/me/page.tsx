@@ -223,6 +223,9 @@ export default function Me() {
   const [avatarUploading, setAvatarUploading] =
     useState(false)
 
+  const [profileBonusPoints, setProfileBonusPoints] =
+    useState<number | null>(null)
+
   const [showAvatarMenu, setShowAvatarMenu] =
     useState(false)
 
@@ -591,6 +594,28 @@ export default function Me() {
           ? `${data.signedUrl}&v=${Date.now()}`
           : null,
       )
+
+      const { data: bonusPoints, error: bonusError } =
+        await supabase.rpc(
+          'claim_profile_photo_bonus',
+          {
+            p_event_id: eventId,
+          },
+        )
+
+      if (bonusError) {
+        console.error(
+          'Profile photo bonus could not be claimed:',
+          bonusError,
+        )
+      } else {
+        const awarded = Number(bonusPoints ?? 0)
+
+        if (awarded > 0) {
+          setScore((current) => current + awarded)
+          setProfileBonusPoints(awarded)
+        }
+      }
 
       closeCropper()
     } catch (error) {
@@ -1510,6 +1535,97 @@ export default function Me() {
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {profileBonusPoints !== null && (
+        <div
+          onClick={() => setProfileBonusPoints(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 130,
+            display: 'grid',
+            placeItems: 'center',
+            padding: 24,
+            background: 'rgba(4,5,9,.72)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+          }}
+        >
+          <section
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 360,
+              padding: '32px 24px 24px',
+              borderRadius: 26,
+              textAlign: 'center',
+              background:
+                'linear-gradient(145deg, rgba(35,29,55,.96), rgba(14,15,22,.97))',
+              border: '1px solid rgba(216,201,255,.22)',
+              boxShadow: '0 26px 80px rgba(0,0,0,.48)',
+            }}
+          >
+            <p
+              className="outingSerifEn"
+              style={{
+                margin: 0,
+                color: 'rgba(216,201,255,.72)',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '.22em',
+              }}
+            >
+              SECRET BONUS
+            </p>
+
+            <div
+              className="outingSerifEn"
+              style={{
+                marginTop: 13,
+                color: '#fff',
+                fontSize: 38,
+                fontWeight: 600,
+                lineHeight: 1,
+                letterSpacing: '.04em',
+              }}
+            >
+              +{profileBonusPoints} PT
+            </div>
+
+            <p
+              className="outingSerifJa"
+              style={{
+                margin: '14px 0 0',
+                color: 'rgba(255,255,255,.72)',
+                fontSize: 14,
+                lineHeight: 1.6,
+              }}
+            >
+              プロフィール写真ボーナスを発見！
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setProfileBonusPoints(null)}
+              style={{
+                width: '100%',
+                minHeight: 44,
+                marginTop: 22,
+                borderRadius: 999,
+                border: '1px solid rgba(255,255,255,.13)',
+                background: 'rgba(255,255,255,.07)',
+                color: '#fff',
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: '.08em',
+                cursor: 'pointer',
+              }}
+            >
+              GET
+            </button>
+          </section>
         </div>
       )}
 
