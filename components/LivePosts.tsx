@@ -11,6 +11,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 import PersistentPostImage from '@/components/PersistentPostImage'
 
 type Mode = 'stream' | 'gallery'
@@ -311,17 +312,15 @@ export default function LivePosts({
       ...rows
         .filter((row) => row.storage_provider !== 'r2')
         .map((row) => row.image_path),
-      ...rows
-        .map((row) => row.participants?.avatar_path ?? '')
-        .filter(Boolean),
       ...adminRows
         .map((row) => row.image_path ?? '')
         .filter(Boolean),
     ]
 
-    const [urls, r2Urls] = await Promise.all([
+    const [urls, r2Urls, avatars] = await Promise.all([
       signedUrlMap(supabase, paths),
       r2ReadUrlMap(rows, mode === 'stream' ? 'original' : 'thumbnail'),
+      avatarUrlMap(supabase, rows.map(row => ({ id: row.participant_id, avatar_path: row.participants?.avatar_path ?? null }))),
     ])
 
     const participantItems: UserFeedItem[] =
@@ -333,7 +332,7 @@ export default function LivePosts({
             ? (r2Urls.get(post.id) ?? '')
             : (urls.get(post.image_path) ?? ''),
         avatarUrl: post.participants?.avatar_path
-          ? (urls.get(post.participants.avatar_path) ?? '')
+          ? (avatars.get(post.participants.avatar_path) ?? '')
           : '',
         heartCount: post.reactions?.length ?? 0,
         mine: post.participant_id === participant.id,
@@ -409,11 +408,11 @@ export default function LivePosts({
       const rows = (data ?? []) as unknown as PostRow[]
       const paths = [
         ...rows.filter((row) => row.storage_provider !== 'r2').map((row) => row.image_path),
-        ...rows.map((row) => row.participants?.avatar_path ?? '').filter(Boolean),
       ]
-      const [urls, r2Urls] = await Promise.all([
+      const [urls, r2Urls, avatars] = await Promise.all([
         signedUrlMap(supabase, paths),
         r2ReadUrlMap(rows, 'original'),
+        avatarUrlMap(supabase, rows.map(row => ({ id: row.participant_id, avatar_path: row.participants?.avatar_path ?? null }))),
       ])
       const nextItems: UserFeedItem[] = rows.map((post) => ({
         ...post,
@@ -422,7 +421,7 @@ export default function LivePosts({
           ? (r2Urls.get(post.id) ?? '')
           : (urls.get(post.image_path) ?? ''),
         avatarUrl: post.participants?.avatar_path
-          ? (urls.get(post.participants.avatar_path) ?? '')
+          ? (avatars.get(post.participants.avatar_path) ?? '')
           : '',
         heartCount: post.reactions?.length ?? 0,
         mine: post.participant_id === currentParticipantId,
@@ -476,11 +475,11 @@ export default function LivePosts({
     const post = data as unknown as PostRow
     const paths = [
       ...(post.storage_provider !== 'r2' ? [post.image_path] : []),
-      post.participants?.avatar_path ?? '',
     ].filter(Boolean)
-    const [urls, r2Urls] = await Promise.all([
+    const [urls, r2Urls, avatars] = await Promise.all([
       signedUrlMap(supabase, paths),
       r2ReadUrlMap([post], 'original'),
+      avatarUrlMap(supabase, [{ id: post.participant_id, avatar_path: post.participants?.avatar_path ?? null }]),
     ])
     const nextItem: UserFeedItem = {
       ...post,
@@ -489,7 +488,7 @@ export default function LivePosts({
         ? (r2Urls.get(post.id) ?? '')
         : (urls.get(post.image_path) ?? ''),
       avatarUrl: post.participants?.avatar_path
-        ? (urls.get(post.participants.avatar_path) ?? '')
+        ? (avatars.get(post.participants.avatar_path) ?? '')
         : '',
       heartCount: post.reactions?.length ?? 0,
       mine: post.participant_id === currentParticipantId,
@@ -605,6 +604,7 @@ export default function LivePosts({
     }
 
     void runLoad()
+    window.addEventListener(PROFILE_UPDATED_EVENT, scheduleLoad)
 
     const channel = supabase
       .channel(
@@ -668,6 +668,15 @@ export default function LivePosts({
         {
           event: '*',
           schema: 'public',
+          table: 'participants',
+        },
+        scheduleLoad,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'stream_posts',
         },
         scheduleLoad,
@@ -676,6 +685,7 @@ export default function LivePosts({
 
     return () => {
       disposed = true
+      window.removeEventListener(PROFILE_UPDATED_EVENT, scheduleLoad)
 
       if (timer) {
         clearTimeout(timer)

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import LivePosts from '@/components/LivePosts'
 import { createClient } from '@/lib/supabase/client'
+import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 
 type ProfileCache = {
   name: string
@@ -98,23 +99,20 @@ export default function ParticipantProfile() {
         return
       }
 
-      const { data } = await supabase.storage
-        .from('outing-photos')
-        .createSignedUrl(avatarPath, 60 * 60)
-
-      if (!data?.signedUrl || cancelled) return
-
       try {
-        const url = await cachedAvatarUrl(
-          participantId,
-          avatarPath,
-          data.signedUrl,
-        )
-        if (cancelled) return
-        if (url.startsWith('blob:')) objectUrl = url
+        const urls = await avatarUrlMap(supabase, [{ id: participantId, avatar_path: avatarPath }])
+        const signedUrl = urls.get(avatarPath)
+        if (!signedUrl || cancelled) return
+        const url = await cachedAvatarUrl(participantId, avatarPath, signedUrl)
+        if (cancelled) {
+          if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+          return
+        }
+        if (objectUrl) URL.revokeObjectURL(objectUrl)
+        objectUrl = url.startsWith('blob:') ? url : null
         setAvatarUrl(url)
-      } catch {
-        if (!cancelled) setAvatarUrl(data.signedUrl)
+      } catch (error) {
+        console.error('Could not load profile photo:', error)
       }
     }
 
@@ -124,7 +122,7 @@ export default function ParticipantProfile() {
       if (cached) {
         setName(cached.name)
         setLoading(false)
-        void loadAvatar(cached.avatarPath)
+        // Resolve only fresh metadata below to avoid stale-photo races.
       }
 
       const { data, error: profileError } = await supabase
@@ -159,9 +157,16 @@ export default function ParticipantProfile() {
     }
 
     void load()
+    const onUpdate = () => { void load() }
+    window.addEventListener(PROFILE_UPDATED_EVENT, onUpdate)
+    const channel = supabase.channel(`profile-avatar-${participantId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'participants', filter: `id=eq.${participantId}` }, onUpdate)
+      .subscribe()
 
     return () => {
       cancelled = true
+      window.removeEventListener(PROFILE_UPDATED_EVENT, onUpdate)
+      void supabase.removeChannel(channel)
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [participantId, supabase])

@@ -53,9 +53,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // avatarは参加者ごとに固定キー
+    // Each revision gets a new key so browser/device caches cannot serve an old photo.
     const key =
-      `avatars/${participantId}/avatar.webp`
+      `avatars/${participantId}/${crypto.randomUUID()}.webp`
 
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,

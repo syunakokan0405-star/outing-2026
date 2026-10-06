@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Trophy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 
 type RankRow = {
   rank: number
@@ -235,35 +236,7 @@ export default function PointTop5() {
         avatarPathMap.set(row.id, row.avatar_path ?? null)
       })
 
-      const avatarPaths = [
-        ...new Set<string>(
-          rankRows
-            .map((row: any) =>
-              avatarPathMap.get(row.participant_id),
-            )
-            .filter(
-              (
-                path: string | null | undefined,
-              ): path is string =>
-                typeof path === 'string' && path.length > 0,
-            ),
-        ),
-      ]
-
-      const avatarUrlMap = new Map<string, string>()
-
-      if (avatarPaths.length) {
-        const { data: signedData } = await supabase.storage
-          .from('outing-photos')
-          .createSignedUrls(avatarPaths, 60 * 60)
-
-        ;(signedData ?? []).forEach((entry, index) => {
-          const path = avatarPaths[index]
-          if (entry.signedUrl && path) {
-            avatarUrlMap.set(path, entry.signedUrl)
-          }
-        })
-      }
+      const resolvedAvatars = await avatarUrlMap(supabase, participantResult.data ?? [])
 
       const nextRows: RankRow[] = rankRows.map((row: any) => {
         const avatarPath =
@@ -273,7 +246,7 @@ export default function PointTop5() {
           ...row,
           avatar_path: avatarPath,
           avatar_url: avatarPath
-            ? avatarUrlMap.get(avatarPath) ?? ''
+            ? resolvedAvatars.get(avatarPath) ?? ''
             : '',
         }
       })
@@ -335,10 +308,12 @@ export default function PointTop5() {
 
     const onFocus = () => void load()
     window.addEventListener('focus', onFocus)
+    window.addEventListener(PROFILE_UPDATED_EVENT, onFocus)
 
     return () => {
       window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener(PROFILE_UPDATED_EVENT, onFocus)
       void supabase.removeChannel(channel)
     }
   }, [load, supabase])

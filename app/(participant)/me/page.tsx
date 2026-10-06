@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 import Cropper, { Area } from 'react-easy-crop'
 import {
   BookOpen,
@@ -93,14 +94,15 @@ async function createCroppedImage(
 
 const AVATAR_CACHE_NAME = 'outing-avatar-images-v1'
 
-function avatarCacheRequest(participantId: string) {
+function avatarCacheRequest(participantId: string, avatarPath: string) {
   return new Request(
-    `${window.location.origin}/__avatar-cache__/${participantId}`,
+    `${window.location.origin}/__avatar-cache__/${participantId}/${encodeURIComponent(avatarPath)}`,
   )
 }
 
 async function readCachedAvatar(
   participantId: string,
+  avatarPath: string,
 ): Promise<string | null> {
   if (
     typeof window === 'undefined' ||
@@ -112,7 +114,7 @@ async function readCachedAvatar(
   try {
     const cache = await caches.open(AVATAR_CACHE_NAME)
     const response = await cache.match(
-      avatarCacheRequest(participantId),
+      avatarCacheRequest(participantId, avatarPath),
     )
 
     if (!response) return null
@@ -126,6 +128,7 @@ async function readCachedAvatar(
 
 async function writeCachedAvatar(
   participantId: string,
+  avatarPath: string,
   blob: Blob,
 ): Promise<string> {
   const objectUrl = URL.createObjectURL(blob)
@@ -140,7 +143,7 @@ async function writeCachedAvatar(
   try {
     const cache = await caches.open(AVATAR_CACHE_NAME)
     await cache.put(
-      avatarCacheRequest(participantId),
+      avatarCacheRequest(participantId, avatarPath),
       new Response(blob, {
         headers: {
           'Content-Type': blob.type || 'image/webp',
@@ -156,6 +159,7 @@ async function writeCachedAvatar(
 
 async function fetchAndCacheAvatar(
   participantId: string,
+  avatarPath: string,
   signedUrl: string,
 ): Promise<string | null> {
   try {
@@ -163,7 +167,7 @@ async function fetchAndCacheAvatar(
     if (!response.ok) return null
 
     const blob = await response.blob()
-    return await writeCachedAvatar(participantId, blob)
+    return await writeCachedAvatar(participantId, avatarPath, blob)
   } catch {
     return null
   }
@@ -174,20 +178,11 @@ async function getR2AvatarUrls(
 ): Promise<Record<string, string>> {
   if (!participantIds.length) return {}
 
-  const response = await fetch('/api/r2/avatar-read-urls', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ participantIds }),
-  })
-
-  if (!response.ok) {
-    throw new Error('プロフィール画像URLを取得できませんでした。')
-  }
-
-  const data = await response.json()
-  return data.urls ?? {}
+  const supabase = createClient()
+  const { data, error } = await supabase.from('participants').select('id,avatar_path').in('id', participantIds)
+  if (error) throw error
+  const urls = await avatarUrlMap(supabase, data ?? [])
+  return Object.fromEntries((data ?? []).map(person => [person.id, urls.get(person.avatar_path ?? '') ?? '']))
 }
 
 type ConnectionPerson = {
@@ -383,7 +378,7 @@ export default function Me() {
 
       if (participant.avatar_path) {
         const cachedAvatar =
-          await readCachedAvatar(participant.id)
+          await readCachedAvatar(participant.id, participant.avatar_path)
 
         if (cachedAvatar) {
           setAvatarUrl(cachedAvatar)
@@ -399,6 +394,7 @@ export default function Me() {
               const localUrl =
                 await fetchAndCacheAvatar(
                   participant.id,
+                  participant.avatar_path,
                   signedUrl,
                 )
 
@@ -574,11 +570,12 @@ export default function Me() {
           let avatarUrl: string | null = null
 
           if (person.avatar_path) {
-            avatarUrl = await readCachedAvatar(person.id)
+            avatarUrl = await readCachedAvatar(person.id, person.avatar_path)
 
             if (!avatarUrl && r2AvatarUrls[person.id]) {
               avatarUrl = await fetchAndCacheAvatar(
                 person.id,
+                person.avatar_path,
                 r2AvatarUrls[person.id],
               )
             }
@@ -720,42 +717,24 @@ export default function Me() {
         )
       }
 
-      /*
-       * R2 object key をavatar_pathへ保存。
-       * set_my_avatar RPC がある場合はそちらを優先。
-       */
-      const { error: rpcError } =
-        await supabase.rpc(
-          'set_my_avatar',
-          {
-            p_event_id: eventId,
-            p_avatar_path: key,
-          },
-        )
-
-      if (rpcError) {
-        const { error: updateError } =
-          await supabase
-            .from('participants')
-            .update({
-              avatar_path: key,
-            })
-            .eq('id', participantId)
-
-        if (updateError) {
-          throw updateError
-        }
-      }
+      // The RPC validates ownership and accepts legacy/fixed/revisioned avatar keys.
+      const { error: rpcError } = await supabase.rpc('set_my_avatar', {
+        p_event_id: eventId,
+        p_avatar_path: key,
+      })
+      if (rpcError) throw rpcError
 
       // UploadしたBlobをそのまま端末へ永続保存。
       // R2から再ダウンロードせず即座に新しいavatarを表示する。
       const localAvatarUrl =
         await writeCachedAvatar(
           participantId,
+          key,
           blob,
         )
 
       setAvatarUrl(localAvatarUrl)
+      window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT))
 
       const { data: bonusPoints, error: bonusError } =
         await supabase.rpc(
@@ -770,6 +749,7 @@ export default function Me() {
           'Profile photo bonus could not be claimed:',
           bonusError,
         )
+        alert('写真は保存されましたが、ポイントの更新に失敗しました。')
       } else {
         const awarded = Number(bonusPoints ?? 0)
 
@@ -779,6 +759,7 @@ export default function Me() {
         }
       }
 
+      window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT))
       closeCropper()
     } catch (error) {
       console.error(error)
