@@ -1,5 +1,7 @@
 'use client'
 
+import ParticipantHeader from '@/components/ParticipantHeader'
+
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -322,41 +324,7 @@ return (
             HEADER
         ========================= */}
 
-        <header
-          style={{
-            paddingTop: 24,
-            marginBottom: 22,
-          }}
-        >
-          <p
-            className="outingSerifEn"
-            style={{
-              margin: 0,
-              color: '#fff',
-              fontSize: 25,
-              lineHeight: 1,
-              letterSpacing: '.12em',
-            }}
-          >
-            OUTING 2026
-          </p>
-
-
-                   <h1
-            className="outingSerifEn"
-            style={{
-              margin: '28px 0 0',
-              color: '#fff',
-              fontSize: 30,
-              fontWeight: 500,
-              lineHeight: 1,
-              letterSpacing: '.16em',
-            }}
-          >
-            MISSIONS
-          </h1>
-
-                </header>
+        <ParticipantHeader title="MISSIONS" />
 
                    {/* =========================
             FILTER TABS
@@ -378,12 +346,12 @@ return (
               },
               {
                 key: 'unclear',
-                label: 'UNCLEAR',
+                label: 'INCOMPLETE',
                 href: '/missions?filter=unclear',
               },
               {
                 key: 'clear',
-                label: 'CLEAR',
+                label: 'COMPLETE',
                 href: '/missions?filter=clear',
               },
             ].map((tab) => {

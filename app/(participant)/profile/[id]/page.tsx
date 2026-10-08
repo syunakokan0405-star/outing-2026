@@ -1,5 +1,7 @@
 'use client'
 
+import ParticipantHeader from '@/components/ParticipantHeader'
+
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
@@ -145,50 +147,10 @@ export default function ParticipantProfile() {
       }
     >
       <div className="participantContent" style={{ paddingBottom: 118 }}>
-        <header style={{ paddingTop: 22, marginBottom: 18 }}>
-          <Link
-            href="/stream"
-            className="outingSans"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 7,
-              color: 'rgba(255,255,255,.62)',
-              textDecoration: 'none',
-              fontSize: 12,
-              letterSpacing: '.08em',
-            }}
-          >
-            <ArrowLeft size={15} strokeWidth={1.6} />
-            STREAM
-          </Link>
-
-          <p
-            className="outingSerifEn"
-            style={{
-              margin: '24px 0 0',
-              color: 'rgba(255,255,255,.5)',
-              fontSize: 10,
-              letterSpacing: '.2em',
-            }}
-          >
-            OUTING 2026
-          </p>
-
-          <h1
-            className="outingSerifEn"
-            style={{
-              margin: '6px 0 0',
-              color: '#fff',
-              fontSize: 32,
-              fontWeight: 500,
-              lineHeight: 1,
-              letterSpacing: '.12em',
-            }}
-          >
-            PROFILE
-          </h1>
-        </header>
+        <ParticipantHeader title="PROFILE" />
+        <Link href="/stream" className="outingSans" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginBottom: 18, color: 'rgba(255,255,255,.62)', textDecoration: 'none', fontSize: 12 }}>
+          <ArrowLeft size={15} strokeWidth={1.6} /> STREAM
+        </Link>
 
         <section
           className="glassCardStrong"

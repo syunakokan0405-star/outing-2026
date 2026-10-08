@@ -1,5 +1,7 @@
 'use client'
 
+import ParticipantHeader from '@/components/ParticipantHeader'
+
 import Link from 'next/link'
 import { avatarUrlMap, writeCachedAvatar, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 import Cropper, { Area } from 'react-easy-crop'
@@ -603,39 +605,7 @@ export default function Me() {
       <div className="participantContent">
         
 {/* HEADER */}
-<header
-  style={{
-    paddingTop: 18,
-    marginBottom: 24,
-  }}
->
-  <p
-    className="outingSerifEn"
-    style={{
-      margin: 0,
-      color: 'rgba(255,255,255,.58)',
-      fontSize: 11,
-      fontWeight: 500,
-      letterSpacing: '.18em',
-    }}
-  >
-    OUTING 2026
-  </p>
-
-  <h1
-    className="outingSerifEn"
-    style={{
-      margin: '7px 0 0',
-      color: '#fff',
-      fontSize: 34,
-      fontWeight: 500,
-      lineHeight: 1,
-      letterSpacing: '.14em',
-    }}
-  >
-    MY PAGE
-  </h1>
-</header>
+<ParticipantHeader title="MY PAGE" />
 
         {/* PROFILE */}
         <section
@@ -1041,7 +1011,7 @@ export default function Me() {
             backdropFilter: 'blur(9px)',
             WebkitBackdropFilter: 'blur(9px)',
             display: 'flex',
-            alignItems: 'flex-end',
+            alignItems: 'center',
             justifyContent: 'center',
             padding: 16,
           }}

@@ -1,5 +1,7 @@
 'use client'
 
+import ParticipantHeader from '@/components/ParticipantHeader'
+
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -162,33 +164,7 @@ export default function GuidePage() {
       }
     >
       <div className="participantContent">
-        <header style={{ paddingTop: 24, marginBottom: 20 }}>
-          <p
-            className="outingSerifEn"
-            style={{
-              margin: 0,
-              color: 'rgba(255,255,255,.58)',
-              fontSize: 11,
-              letterSpacing: '.18em',
-            }}
-          >
-            OUTING 2026
-          </p>
-
-          <h1
-            className="outingSerifEn"
-            style={{
-              margin: '7px 0 0',
-              color: '#fff',
-              fontSize: 34,
-              fontWeight: 500,
-              lineHeight: 1,
-              letterSpacing: '.14em',
-            }}
-          >
-            GUIDE
-          </h1>
-        </header>
+        <ParticipantHeader title="GUIDE" />
 
         <section
           style={{

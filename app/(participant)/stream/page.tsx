@@ -1,3 +1,5 @@
+
+import ParticipantHeader from '@/components/ParticipantHeader'
 import Link from 'next/link'
 import {
   BookOpen,
@@ -26,56 +28,8 @@ export default function Stream() {
             HEADER
         ========================= */}
 
-        <header
-          style={{
-            paddingTop: 24,
-            marginBottom: 26,
-          }}
-        >
-          <p
-            className="outingSerifEn"
-            style={{
-              margin: 0,
-              color:
-                'rgba(255,255,255,.58)',
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '.18em',
-            }}
-          >
-            OUTING 2026
-          </p>
-
-          <h1
-            className="outingSerifEn"
-            style={{
-              margin: '7px 0 0',
-              color: '#fff',
-              fontSize: 34,
-              fontWeight: 500,
-              lineHeight: 1,
-              letterSpacing: '.14em',
-            }}
-          >
-            STREAM
-          </h1>
-
-          <p
-            className="outingSerifJa"
-            style={{
-              margin: '11px 0 0',
-              maxWidth: 350,
-              color:
-                'rgba(255,255,255,.58)',
-              fontSize: 13,
-              fontWeight: 400,
-              lineHeight: 1.7,
-              letterSpacing: '.06em',
-            }}
-          >
-            みんなの瞬間を、リアルタイムで。
-          </p>
-        </header>
+        <ParticipantHeader title="STREAM" />
+        <p className="outingSerifJa" style={{ margin: "-9px 0 26px", color: "rgba(255,255,255,.58)", fontSize: 13, lineHeight: 1.7 }}>みんなの瞬間を、リアルタイムで。</p>
 
         {/* =========================
             POSTS

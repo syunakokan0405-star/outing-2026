@@ -1,5 +1,7 @@
 'use client'
 
+import ParticipantHeader from '@/components/ParticipantHeader'
+
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -372,26 +374,7 @@ return (
             HEADER
         ========================= */}
 
-        <header
-          style={{
-            paddingTop: 24,
-            marginBottom: 24,
-          }}
-        >
-          <h1
-            className="outingSerifEn"
-            style={{
-              margin: 0,
-              color: '#fff',
-              fontSize: 25,
-              fontWeight: 500,
-              lineHeight: 1,
-              letterSpacing: '.12em',
-            }}
-          >
-            OUTING 2026
-          </h1>
-        </header>
+        <ParticipantHeader />
 
         {/* =========================
             ANNOUNCEMENT
@@ -630,7 +613,7 @@ return (
                 className="photoCardImage"
               />
 
-              <div className="photoCardContent">
+              <div className="photoCardContent homeMissionContent">
 
                 <div
                   style={{
