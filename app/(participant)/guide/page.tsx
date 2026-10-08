@@ -17,6 +17,7 @@ import {
   CircleEllipsis,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
 
 type GuideSection = {
   id: string
@@ -34,7 +35,6 @@ type GuideCache = {
 
 const EVENT_ID = process.env.NEXT_PUBLIC_EVENT_ID ?? ''
 const DATA_CACHE_VERSION = 'outing-guide-v2'
-const IMAGE_CACHE_NAME = 'outing-ui-images-v1'
 const memoryCache = new Map<string, GuideCache>()
 
 const categories = [
@@ -75,30 +75,6 @@ function writeDataCache(eventId: string, value: GuideCache) {
   } catch {}
 }
 
-async function getCachedUiImage(
-  stableId: string,
-  signedUrl: string,
-): Promise<string> {
-  if (!('caches' in window)) return signedUrl
-
-  const cache = await caches.open(IMAGE_CACHE_NAME)
-  const stableUrl =
-    `${window.location.origin}/__outing-cache/ui/` +
-    encodeURIComponent(stableId)
-  const request = new Request(stableUrl)
-  const cached = await cache.match(request)
-
-  if (cached) {
-    return URL.createObjectURL(await cached.blob())
-  }
-
-  const response = await fetch(signedUrl)
-  if (!response.ok) return signedUrl
-
-  await cache.put(request, response.clone())
-  return URL.createObjectURL(await response.blob())
-}
-
 export default function GuidePage() {
   const supabase = useMemo(() => createClient(), [])
   const [sections, setSections] = useState<GuideSection[]>([])
@@ -108,37 +84,11 @@ export default function GuidePage() {
 
   useEffect(() => {
     let cancelled = false
-    let objectUrl: string | null = null
 
     async function applyBackground(path: string) {
-      if (!path) {
-        if (!cancelled) setGuideImageUrl('/outing-bg.jpg')
-        return
-      }
-
-      const { data, error: signError } = await supabase.storage
-        .from('outing-photos')
-        .createSignedUrl(path, 60 * 60)
-
-      if (signError || !data?.signedUrl || cancelled) return
-
-      try {
-        const url = await getCachedUiImage(
-          `guide:${EVENT_ID}:${path}`,
-          data.signedUrl,
-        )
-
-        if (cancelled) {
-          if (url.startsWith('blob:')) URL.revokeObjectURL(url)
-          return
-        }
-
-        if (objectUrl) URL.revokeObjectURL(objectUrl)
-        objectUrl = url.startsWith('blob:') ? url : null
-        setGuideImageUrl(url)
-      } catch {
-        if (!cancelled) setGuideImageUrl(data.signedUrl)
-      }
+      if (!path) { if (!cancelled) setGuideImageUrl('/outing-bg.jpg'); return }
+      const urls = await storageImageUrlMap(supabase, [path])
+      if (!cancelled && urls.get(path)) setGuideImageUrl(urls.get(path)!)
     }
 
     async function load() {
@@ -199,7 +149,6 @@ export default function GuidePage() {
 
     return () => {
       cancelled = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [supabase])
 

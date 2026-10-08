@@ -22,7 +22,6 @@ type ProfileCache = {
 }
 
 const PROFILE_CACHE_VERSION = 'outing-public-profile-v2'
-const IMAGE_CACHE_NAME = 'outing-ui-images-v1'
 const memoryCache = new Map<string, ProfileCache>()
 
 function profileKey(participantId: string) {
@@ -53,32 +52,6 @@ function writeProfileCache(participantId: string, value: ProfileCache) {
   } catch {}
 }
 
-async function cachedAvatarUrl(
-  participantId: string,
-  avatarPath: string,
-  signedUrl: string,
-) {
-  if (!('caches' in window)) return signedUrl
-
-  const cache = await caches.open(IMAGE_CACHE_NAME)
-  const stableUrl =
-    `${window.location.origin}/__outing-cache/avatar/` +
-    `${encodeURIComponent(participantId)}/` +
-    `${encodeURIComponent(avatarPath)}`
-  const request = new Request(stableUrl)
-  const cached = await cache.match(request)
-
-  if (cached) {
-    return URL.createObjectURL(await cached.blob())
-  }
-
-  const response = await fetch(signedUrl)
-  if (!response.ok) return signedUrl
-
-  await cache.put(request, response.clone())
-  return URL.createObjectURL(await response.blob())
-}
-
 export default function ParticipantProfile() {
   const params = useParams<{ id: string }>()
   const participantId = params.id
@@ -91,7 +64,6 @@ export default function ParticipantProfile() {
 
   useEffect(() => {
     let cancelled = false
-    let objectUrl: string | null = null
 
     async function loadAvatar(avatarPath: string) {
       if (!avatarPath) {
@@ -101,15 +73,8 @@ export default function ParticipantProfile() {
 
       try {
         const urls = await avatarUrlMap(supabase, [{ id: participantId, avatar_path: avatarPath }])
-        const signedUrl = urls.get(avatarPath)
-        if (!signedUrl || cancelled) return
-        const url = await cachedAvatarUrl(participantId, avatarPath, signedUrl)
-        if (cancelled) {
-          if (url.startsWith('blob:')) URL.revokeObjectURL(url)
-          return
-        }
-        if (objectUrl) URL.revokeObjectURL(objectUrl)
-        objectUrl = url.startsWith('blob:') ? url : null
+        const url = urls.get(avatarPath)
+        if (!url || cancelled) return
         setAvatarUrl(url)
       } catch (error) {
         console.error('Could not load profile photo:', error)
@@ -167,7 +132,6 @@ export default function ParticipantProfile() {
       cancelled = true
       window.removeEventListener(PROFILE_UPDATED_EVENT, onUpdate)
       void supabase.removeChannel(channel)
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [participantId, supabase])
 

@@ -1,0 +1,25 @@
+const {test}=require('node:test')
+const assert=require('node:assert/strict')
+const {readFileSync}=require('node:fs')
+const ts=require('typescript')
+const vm=require('node:vm')
+const e={}
+vm.runInNewContext(ts.transpileModule(readFileSync('lib/notification-changes.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:e})
+const row=(id,is_read=false)=>({id,title:'title',body:null,href:null,type:'info',is_read,created_at:`2026-10-07T00:00:${String(id).padStart(2,'0')}Z`})
+test('duplicate inserts and read updates preserve one notification and its fields',()=>{
+  const a=e.applyNotificationChange([row('01')],'INSERT',row('02'),{})
+  const b=e.applyNotificationChange(a,'INSERT',row('02'),{})
+  assert.equal(b.length,2)
+  const c=e.applyNotificationChange(b,'UPDATE',row('02',true),{})
+  assert.equal(c.length,2);assert.equal(c[0].is_read,true);assert.equal(c[1].is_read,false)
+})
+test('delete removes only the targeted row; partial rows request fallback',()=>{
+  assert.deepEqual(Array.from(e.applyNotificationChange([row('01'),row('02')],'DELETE',{}, {id:'01'}),r=>r.id),['02'])
+  assert.equal(e.applyNotificationChange([row('01')],'UPDATE',{id:'01',is_read:true},{}),null)
+  assert.equal(e.applyNotificationChange([],'DELETE',{},{}),null)
+})
+test('latest 50 remain ordered and inserting an older notification cannot displace a newer one',()=>{
+  const rows=Array.from({length:50},(_,i)=>row(String(i+1)))
+  const result=e.applyNotificationChange(rows,'INSERT',row('00'),{})
+  assert.equal(result.length,50);assert.equal(result[0].id,'50');assert.equal(result[49].id,'1')
+})

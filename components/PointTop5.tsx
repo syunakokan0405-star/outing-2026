@@ -1,9 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Trophy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { getBrowserParticipant } from '@/lib/browser-participant'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
 import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 
 type RankRow = {
@@ -23,33 +25,8 @@ type PointTop5Cache = {
   rankingBackgroundPath: string
 }
 
-const CACHE_VERSION = 'outing-point-top5-v2'
-const UI_IMAGE_CACHE_NAME = 'outing-ui-images-v1'
+const CACHE_VERSION = 'outing-point-top5-v3'
 const memoryCache = new Map<string, PointTop5Cache>()
-
-async function getCachedRankingImage(
-  stableId: string,
-  signedUrl: string,
-): Promise<string> {
-  if (!('caches' in window)) return signedUrl
-
-  const cache = await caches.open(UI_IMAGE_CACHE_NAME)
-  const stableUrl =
-    `${window.location.origin}/__outing-cache/ui/` +
-    encodeURIComponent(stableId)
-  const request = new Request(stableUrl)
-  const cached = await cache.match(request)
-
-  if (cached) {
-    return URL.createObjectURL(await cached.blob())
-  }
-
-  const response = await fetch(signedUrl)
-  if (!response.ok) return signedUrl
-
-  await cache.put(request, response.clone())
-  return URL.createObjectURL(await response.blob())
-}
 
 function cacheKey(eventId: string, userId: string) {
   return `${CACHE_VERSION}:${eventId}:${userId}`
@@ -88,6 +65,7 @@ function writeCache(
 
 export default function PointTop5() {
   const supabase = useMemo(() => createClient(), [])
+  const backgroundPathRef = useRef<string | null>(null)
   const [rows, setRows] = useState<RankRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -97,60 +75,21 @@ export default function PointTop5() {
   const load = useCallback(async () => {
     setError('')
 
-    const { data: authData } = await supabase.auth.getUser()
-    const user = authData.user
-
-    if (!user) {
-      setError('参加者ログイン後にランキングを表示できます。')
-      setLoading(false)
-      return
-    }
-
-    const { data: participant, error: participantError } =
-      await supabase
-        .from('participants')
-        .select('event_id')
-        .eq('auth_user_id', user.id)
-        .maybeSingle()
-
-    if (participantError || !participant) {
+    const participant = await getBrowserParticipant(supabase).catch(() => null)
+    if (!participant) {
       setError('参加者情報を取得できませんでした。')
       setLoading(false)
       return
     }
 
     const eventId = participant.event_id
-    const cached = readCache(eventId, user.id)
+    const cached = readCache(eventId, participant.id)
 
-    async function applyRankingBackground(
-      path: string,
-      signedUrl?: string,
-    ) {
-      if (!path) {
-        setRankingBackgroundUrl('/mission-default.jpg')
-        return
-      }
-
-      let resolvedSignedUrl = signedUrl ?? ''
-
-      if (!resolvedSignedUrl) {
-        const { data, error } = await supabase.storage
-          .from('outing-photos')
-          .createSignedUrl(path, 60 * 60)
-
-        if (error || !data?.signedUrl) return
-        resolvedSignedUrl = data.signedUrl
-      }
-
-      try {
-        const url = await getCachedRankingImage(
-          `ranking:${eventId}:${path}`,
-          resolvedSignedUrl,
-        )
-        setRankingBackgroundUrl(url)
-      } catch {
-        setRankingBackgroundUrl(resolvedSignedUrl)
-      }
+    async function applyRankingBackground(path: string) {
+      if (!path) { setRankingBackgroundUrl('/mission-default.jpg'); return }
+      const urls = await storageImageUrlMap(supabase, [path])
+      const url = urls.get(path)
+      if (url) setRankingBackgroundUrl(url)
     }
 
     // Show cached text/background data immediately.
@@ -170,11 +109,9 @@ export default function PointTop5() {
     try {
       // Ranking and event background metadata are independent.
       const [eventResult, rankResult] = await Promise.all([
-        supabase
-          .from('events')
-          .select('ranking_background_path')
-          .eq('id', eventId)
-          .maybeSingle(),
+        backgroundPathRef.current === null
+          ? supabase.from('events').select('ranking_background_path').eq('id', eventId).maybeSingle()
+          : Promise.resolve({ data: { ranking_background_path: backgroundPathRef.current }, error: null }),
         supabase.rpc('get_event_top5', {
           p_event_id: eventId,
         }),
@@ -185,6 +122,8 @@ export default function PointTop5() {
       const rankingBackgroundPath =
         eventResult.data?.ranking_background_path ?? ''
 
+      if (!eventResult.error) backgroundPathRef.current = rankingBackgroundPath
+
       const rankRows = (rankResult.data ?? []).map((row: any) => ({
         rank: Number(row.rank),
         participant_id: row.participant_id as string,
@@ -193,7 +132,7 @@ export default function PointTop5() {
       }))
 
       if (!rankRows.length) {
-        writeCache(eventId, user.id, {
+        writeCache(eventId, participant.id, {
           savedAt: Date.now(),
           rows: [],
           rankingBackgroundPath,
@@ -205,31 +144,10 @@ export default function PointTop5() {
 
       const ids = rankRows.map((row: any) => row.participant_id)
 
-      // Participant avatar metadata and background signature can run together.
-      const participantPromise = supabase
-        .from('participants')
-        .select('id,avatar_path')
-        .in('id', ids)
-
-      const backgroundPromise = rankingBackgroundPath
-        ? supabase.storage
-            .from('outing-photos')
-            .createSignedUrl(rankingBackgroundPath, 60 * 60)
-        : Promise.resolve({ data: null, error: null })
-
-      const [participantResult, backgroundResult] =
-        await Promise.all([participantPromise, backgroundPromise])
-
+      const participantResult = await supabase.from('participants')
+        .select('id,avatar_path').in('id', ids)
       if (participantResult.error) throw participantResult.error
-
-      if (rankingBackgroundPath && backgroundResult.data?.signedUrl) {
-        void applyRankingBackground(
-          rankingBackgroundPath,
-          backgroundResult.data.signedUrl,
-        )
-      } else {
-        setRankingBackgroundUrl('/mission-default.jpg')
-      }
+      void applyRankingBackground(rankingBackgroundPath)
 
       const avatarPathMap = new Map<string, string | null>()
       ;(participantResult.data ?? []).forEach((row: any) => {
@@ -251,7 +169,7 @@ export default function PointTop5() {
         }
       })
 
-      writeCache(eventId, user.id, {
+      writeCache(eventId, participant.id, {
         savedAt: Date.now(),
         rankingBackgroundPath,
         rows: nextRows.map(({ avatar_url, ...row }) => row),
@@ -274,46 +192,53 @@ export default function PointTop5() {
   }, [supabase])
 
   useEffect(() => {
-    void load()
-
-    const channel = supabase
-      .channel('home-point-ranking')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'posts',
-        },
-        () => void load(),
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'participants',
-        },
-        () => void load(),
-      )
+    const isVisible = () => document.visibilityState !== 'hidden'
+    let disposed = false
+    let running = false
+    let queued = false
+    let debounce: ReturnType<typeof setTimeout> | undefined
+    let lastRefresh = 0
+    const refresh = async () => {
+      if (disposed || !isVisible()) { queued = true; return }
+      if (running) { queued = true; return }
+      running = true
+      queued = false
+      try { await load(); lastRefresh = Date.now() }
+      finally {
+        running = false
+        if (queued && !disposed && isVisible()) schedule()
+      }
+    }
+    const schedule = () => {
+      if (disposed) return
+      if (debounce) clearTimeout(debounce)
+      debounce = setTimeout(() => { debounce = undefined; void refresh() }, 500)
+    }
+    void refresh()
+    const channel = supabase.channel('home-point-ranking')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, schedule)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'point_transactions' }, schedule)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events' }, () => { backgroundPathRef.current = null; schedule() })
       .subscribe()
-
-    // Realtime already catches score-related changes.
-    // A slower fallback poll protects against a missed realtime event
-    // without hitting Supabase every 15 seconds.
-    const timer = window.setInterval(
-      () => void load(),
-      60000,
-    )
-
-    const onFocus = () => void load()
-    window.addEventListener('focus', onFocus)
-    window.addEventListener(PROFILE_UPDATED_EVENT, onFocus)
-
+    // Missed updates are recovered every five minutes while visible.
+    const timer = window.setInterval(() => {
+      backgroundPathRef.current = null
+      schedule()
+    }, 300_000)
+    const onResume = () => {
+      if (queued || Date.now() - lastRefresh >= 60_000) schedule()
+    }
+    window.addEventListener('focus', onResume)
+    document.addEventListener('visibilitychange', onResume)
+    window.addEventListener(PROFILE_UPDATED_EVENT, schedule)
     return () => {
+      disposed = true
       window.clearInterval(timer)
-      window.removeEventListener('focus', onFocus)
-      window.removeEventListener(PROFILE_UPDATED_EVENT, onFocus)
+      if (debounce) clearTimeout(debounce)
+      window.removeEventListener('focus', onResume)
+      document.removeEventListener('visibilitychange', onResume)
+      window.removeEventListener(PROFILE_UPDATED_EVENT, schedule)
       void supabase.removeChannel(channel)
     }
   }, [load, supabase])

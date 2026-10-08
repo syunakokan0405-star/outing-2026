@@ -7,11 +7,15 @@ import {
   useState,
 } from 'react'
 
+import { createClient } from '@/lib/supabase/client'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
+
 const CACHE_NAME = 'outing-mission-images-v1'
 
 type Props = {
   missionId: string
   src: string
+  storagePath?: string
   alt: string
   style?: CSSProperties
   className?: string
@@ -20,6 +24,7 @@ type Props = {
 export default function PersistentMissionImage({
   missionId,
   src,
+  storagePath,
   alt,
   style,
   className,
@@ -64,6 +69,11 @@ export default function PersistentMissionImage({
 
     async function loadImage() {
       try {
+        if (storagePath) {
+          const urls = await storageImageUrlMap(createClient(), [storagePath])
+          if (!cancelled) setDisplaySrc(urls.get(storagePath) ?? src)
+          return
+        }
         const cacheKey = new Request(
           `${window.location.origin}/__outing-cache/mission/${missionId}`,
         )
@@ -126,7 +136,7 @@ export default function PersistentMissionImage({
         objectUrlRef.current = null
       }
     }
-  }, [missionId, shouldLoad, src])
+  }, [missionId, shouldLoad, src, storagePath])
 
   return (
     <div

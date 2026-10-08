@@ -7,11 +7,12 @@ import {
   useState,
 } from 'react'
 
-const CACHE_NAME = 'outing-post-images-v3'
+import { POST_IMAGE_CACHE as CACHE_NAME, postImageCacheRequest } from '@/lib/post-image-urls'
 
 type Props = {
   postId: string
   src: string
+  resolveSrc?: () => Promise<string | undefined>
   alt: string
   style?: CSSProperties
   className?: string
@@ -20,10 +21,13 @@ type Props = {
 export default function PersistentPostImage({
   postId,
   src,
+  resolveSrc,
   alt,
   style,
   className,
 }: Props) {
+  const resolverRef = useRef(resolveSrc)
+  resolverRef.current = resolveSrc
   const containerRef = useRef<HTMLDivElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
 
@@ -59,9 +63,10 @@ export default function PersistentPostImage({
   }, [])
 
   useEffect(() => {
-    if (!shouldLoad || !src) return
+    if (!shouldLoad) return
 
     let cancelled = false
+    let source = src
 
     async function loadImage() {
       try {
@@ -69,14 +74,12 @@ export default function PersistentPostImage({
 
         // Signed URLは毎回変わるので、
         // postIdを使った固定URLをキャッシュキーにする。
-        const cacheKey = new Request(
-          `${window.location.origin}/__outing-cache/post-thumb/${postId}`,
-        )
+        const cacheKey = postImageCacheRequest(postId)
 
         if ('caches' in window) {
-          const cache = await caches.open(CACHE_NAME)
+          const cache = await caches.open(CACHE_NAME).catch(() => undefined)
 
-          const cached = await cache.match(cacheKey)
+          const cached = await cache?.match(cacheKey).catch(() => undefined)
 
           if (cached) {
             const blob = await cached.blob()
@@ -90,7 +93,9 @@ export default function PersistentPostImage({
             return
           }
 
-          const response = await fetch(src)
+          source = source || await resolverRef.current?.() || ''
+          if (!source || cancelled) return
+          const response = await fetch(source)
 
           if (!response.ok) {
             throw new Error(
@@ -99,7 +104,7 @@ export default function PersistentPostImage({
           }
 
           // 端末のCache Storageへ保存
-          await cache.put(cacheKey, response.clone())
+          await cache?.put(cacheKey, response.clone()).catch(() => {})
 
           const blob = await response.blob()
 
@@ -113,7 +118,8 @@ export default function PersistentPostImage({
         }
 
         // Cache Storage非対応ブラウザ用
-        setDisplaySrc(src)
+        source = source || await resolverRef.current?.() || ''
+        if (!cancelled) setDisplaySrc(source)
       } catch (error) {
         console.error(
           'Persistent image load error:',
@@ -123,7 +129,8 @@ export default function PersistentPostImage({
         if (!cancelled) {
           // キャッシュ取得が失敗しても、
           // 通常のimg読み込みへフォールバック
-          setDisplaySrc(src)
+          source = source || await resolverRef.current?.() || ''
+          if (!cancelled) setDisplaySrc(source)
           setFailed(true)
         }
       }

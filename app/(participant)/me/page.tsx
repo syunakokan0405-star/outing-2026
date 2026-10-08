@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
+import { avatarUrlMap, writeCachedAvatar, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 import Cropper, { Area } from 'react-easy-crop'
 import {
   BookOpen,
@@ -28,6 +28,7 @@ import {
 
 import LivePosts from '@/components/LivePosts'
 import { createClient } from '@/lib/supabase/client'
+import { getBrowserParticipant } from '@/lib/browser-participant'
 
 async function createCroppedImage(
   imageSrc: string,
@@ -90,99 +91,6 @@ async function createCroppedImage(
       )
     },
   )
-}
-
-const AVATAR_CACHE_NAME = 'outing-avatar-images-v1'
-
-function avatarCacheRequest(participantId: string, avatarPath: string) {
-  return new Request(
-    `${window.location.origin}/__avatar-cache__/${participantId}/${encodeURIComponent(avatarPath)}`,
-  )
-}
-
-async function readCachedAvatar(
-  participantId: string,
-  avatarPath: string,
-): Promise<string | null> {
-  if (
-    typeof window === 'undefined' ||
-    !('caches' in window)
-  ) {
-    return null
-  }
-
-  try {
-    const cache = await caches.open(AVATAR_CACHE_NAME)
-    const response = await cache.match(
-      avatarCacheRequest(participantId, avatarPath),
-    )
-
-    if (!response) return null
-
-    const blob = await response.blob()
-    return URL.createObjectURL(blob)
-  } catch {
-    return null
-  }
-}
-
-async function writeCachedAvatar(
-  participantId: string,
-  avatarPath: string,
-  blob: Blob,
-): Promise<string> {
-  const objectUrl = URL.createObjectURL(blob)
-
-  if (
-    typeof window === 'undefined' ||
-    !('caches' in window)
-  ) {
-    return objectUrl
-  }
-
-  try {
-    const cache = await caches.open(AVATAR_CACHE_NAME)
-    await cache.put(
-      avatarCacheRequest(participantId, avatarPath),
-      new Response(blob, {
-        headers: {
-          'Content-Type': blob.type || 'image/webp',
-        },
-      }),
-    )
-  } catch {
-    // Cache failure must never block avatar display.
-  }
-
-  return objectUrl
-}
-
-async function fetchAndCacheAvatar(
-  participantId: string,
-  avatarPath: string,
-  signedUrl: string,
-): Promise<string | null> {
-  try {
-    const response = await fetch(signedUrl)
-    if (!response.ok) return null
-
-    const blob = await response.blob()
-    return await writeCachedAvatar(participantId, avatarPath, blob)
-  } catch {
-    return null
-  }
-}
-
-async function getR2AvatarUrls(
-  participantIds: string[],
-): Promise<Record<string, string>> {
-  if (!participantIds.length) return {}
-
-  const supabase = createClient()
-  const { data, error } = await supabase.from('participants').select('id,avatar_path').in('id', participantIds)
-  if (error) throw error
-  const urls = await avatarUrlMap(supabase, data ?? [])
-  return Object.fromEntries((data ?? []).map(person => [person.id, urls.get(person.avatar_path ?? '') ?? '']))
 }
 
 type ConnectionPerson = {
@@ -355,20 +263,7 @@ export default function Me() {
 
   useEffect(() => {
     void (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) return
-
-      const { data: participant } =
-        await supabase
-          .from('participants')
-          .select(
-            'id,event_id,name,avatar_path',
-          )
-          .eq('auth_user_id', user.id)
-          .maybeSingle()
+      const participant = await getBrowserParticipant(supabase).catch(() => null)
 
       if (!participant) return
 
@@ -376,58 +271,8 @@ export default function Me() {
       setEventId(participant.event_id)
       setName(participant.name)
 
-      if (participant.avatar_path) {
-        const cachedAvatar =
-          await readCachedAvatar(participant.id, participant.avatar_path)
-
-        if (cachedAvatar) {
-          setAvatarUrl(cachedAvatar)
-        } else {
-          try {
-            const urls = await getR2AvatarUrls([
-              participant.id,
-            ])
-
-            const signedUrl = urls[participant.id]
-
-            if (signedUrl) {
-              const localUrl =
-                await fetchAndCacheAvatar(
-                  participant.id,
-                  participant.avatar_path,
-                  signedUrl,
-                )
-
-              setAvatarUrl(localUrl)
-            }
-          } catch (error) {
-            console.error(
-              'Could not load R2 avatar:',
-              error,
-            )
-          }
-        }
-      } else {
-        setAvatarUrl(null)
-      }
-
-      const { data: points } =
-        await supabase
-          .from('point_transactions')
-          .select('points')
-          .eq(
-            'participant_id',
-            participant.id,
-          )
-          .eq('is_active', true)
-
-      setScore(
-        (points ?? []).reduce(
-          (sum, item) =>
-            sum + (item.points ?? 0),
-          0,
-        ),
-      )
+      const avatars = await avatarUrlMap(supabase, [participant])
+      setAvatarUrl(avatars.get(participant.avatar_path ?? '') ?? null)
 
       const { count: a } =
         await supabase
@@ -465,6 +310,10 @@ export default function Me() {
               participant.event_id,
           },
         )
+
+      if (Array.isArray(rankData) && rankData[0]) {
+        setScore(Number(rankData[0].score ?? 0))
+      }
 
       if (
         Array.isArray(rankData) &&
@@ -544,50 +393,12 @@ export default function Me() {
 
       if (peopleError) throw peopleError
 
-      const peopleWithAvatars = (people ?? []).filter(
-        (person: any) => Boolean(person.avatar_path),
-      )
-
-      let r2AvatarUrls: Record<string, string> = {}
-
-      if (peopleWithAvatars.length) {
-        try {
-          r2AvatarUrls = await getR2AvatarUrls(
-            peopleWithAvatars.map(
-              (person: any) => person.id,
-            ),
-          )
-        } catch (error) {
-          console.error(
-            'Could not load connection avatar URLs:',
-            error,
-          )
-        }
-      }
-
-      const withAvatars = await Promise.all(
-        (people ?? []).map(async (person: any) => {
-          let avatarUrl: string | null = null
-
-          if (person.avatar_path) {
-            avatarUrl = await readCachedAvatar(person.id, person.avatar_path)
-
-            if (!avatarUrl && r2AvatarUrls[person.id]) {
-              avatarUrl = await fetchAndCacheAvatar(
-                person.id,
-                person.avatar_path,
-                r2AvatarUrls[person.id],
-              )
-            }
-          }
-
-          return {
-            id: person.id,
-            name: person.name,
-            avatarUrl,
-          } satisfies ConnectionPerson
-        }),
-      )
+      const avatars = await avatarUrlMap(supabase, people ?? [])
+      const withAvatars = (people ?? []).map((person: any) => ({
+        id: person.id,
+        name: person.name,
+        avatarUrl: avatars.get(person.avatar_path ?? '') ?? null,
+      } satisfies ConnectionPerson))
 
       withAvatars.sort((a, b) =>
         a.name.localeCompare(b.name, 'ja'),

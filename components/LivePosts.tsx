@@ -11,7 +11,11 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { getBrowserParticipant } from '@/lib/browser-participant'
+import { createPostQueue } from '@/lib/realtime-post-queue'
+import { applyReactionChange } from '@/lib/feed-reactions'
 import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
+import { r2PostUrlMap as r2ReadUrlMap } from '@/lib/post-image-urls'
 import PersistentPostImage from '@/components/PersistentPostImage'
 
 type Mode = 'stream' | 'gallery'
@@ -112,50 +116,6 @@ async function signedUrlMap(
   return map
 }
 
-async function r2ReadUrlMap(
-  posts: PostRow[],
-  variant: 'original' | 'thumbnail',
-) {
-  const postIds = posts
-    .filter(
-      (post) =>
-        post.storage_provider === 'r2' &&
-        (post.r2_object_key || post.r2_thumbnail_key),
-    )
-    .map((post) => post.id)
-
-  if (!postIds.length) {
-    return new Map<string, string>()
-  }
-
-  try {
-    const response = await fetch('/api/r2/read-urls', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        postIds,
-        variant,
-      }),
-    })
-
-    if (!response.ok) {
-      return new Map<string, string>()
-    }
-
-    const data = (await response.json()) as {
-      urls?: Record<string, string>
-    }
-
-    return new Map<string, string>(
-      Object.entries(data.urls ?? {}),
-    )
-  } catch {
-    return new Map<string, string>()
-  }
-}
-
 export default function LivePosts({
   mode,
   participantId,
@@ -195,27 +155,8 @@ export default function LivePosts({
     }
     setError('')
 
-    const { data: authData } = await supabase.auth.getUser()
-    const authUser = authData.user
-
-    if (!authUser) {
-      setError(
-        'ログイン情報がありません。先に名前を選択してください。',
-      )
-      setLoading(false)
-      return
-    }
-
-    const {
-      data: participant,
-      error: participantError,
-    } = await supabase
-      .from('participants')
-      .select('id,event_id,name')
-      .eq('auth_user_id', authUser.id)
-      .maybeSingle()
-
-    if (participantError || !participant) {
+    const participant = await getBrowserParticipant(supabase).catch(() => null)
+    if (!participant) {
       setError('参加者情報を取得できませんでした。')
       setLoading(false)
       return
@@ -452,9 +393,8 @@ export default function LivePosts({
     return () => observer.disconnect()
   }, [hasMore, loadMore, mode])
 
-  const addRealtimePost = useCallback(async (postId: string) => {
-    if (mode !== 'stream' || !currentEventId || !currentParticipantId) return
-
+  const addRealtimePosts = useCallback(async (postIds: string[]) => {
+    if (mode !== 'stream' || !currentEventId || !currentParticipantId || !postIds.length) return
     const { data, error: postError } = await supabase
       .from('posts')
       .select(`
@@ -465,38 +405,31 @@ export default function LivePosts({
         reactions(participant_id),
         post_mentions(participant_id,participants(name))
       `)
-      .eq('id', postId)
+      .in('id', postIds)
       .eq('event_id', currentEventId)
       .eq('visibility', 'stream')
       .is('deleted_at', null)
-      .maybeSingle()
 
-    if (postError || !data) return
-    const post = data as unknown as PostRow
-    const paths = [
-      ...(post.storage_provider !== 'r2' ? [post.image_path] : []),
-    ].filter(Boolean)
+
+
+    if (postError) throw postError
+    if (!data) return
+    const posts = data as unknown as PostRow[]
     const [urls, r2Urls, avatars] = await Promise.all([
-      signedUrlMap(supabase, paths),
-      r2ReadUrlMap([post], 'original'),
-      avatarUrlMap(supabase, [{ id: post.participant_id, avatar_path: post.participants?.avatar_path ?? null }]),
+      signedUrlMap(supabase, posts.filter(post => post.storage_provider !== 'r2').map(post => post.image_path)),
+      r2ReadUrlMap(posts, 'original'),
+      avatarUrlMap(supabase, posts.map(post => ({ id: post.participant_id, avatar_path: post.participants?.avatar_path ?? null }))),
     ])
-    const nextItem: UserFeedItem = {
-      ...post,
-      kind: 'participant',
-      signedUrl: post.storage_provider === 'r2'
-        ? (r2Urls.get(post.id) ?? '')
-        : (urls.get(post.image_path) ?? ''),
-      avatarUrl: post.participants?.avatar_path
-        ? (avatars.get(post.participants.avatar_path) ?? '')
-        : '',
+    const nextItems: UserFeedItem[] = posts.map(post => ({
+      ...post, kind: 'participant',
+      signedUrl: post.storage_provider === 'r2' ? (r2Urls.get(post.id) ?? '') : (urls.get(post.image_path) ?? ''),
+      avatarUrl: post.participants?.avatar_path ? (avatars.get(post.participants.avatar_path) ?? '') : '',
       heartCount: post.reactions?.length ?? 0,
       mine: post.participant_id === currentParticipantId,
-    }
-
-    setItems((current) => {
-      if (current.some((item) => item.kind === 'participant' && item.id === nextItem.id)) return current
-      return [nextItem, ...current].sort(
+    }))
+    setItems(current => {
+      const known = new Set(current.filter(item => item.kind === 'participant').map(item => item.id))
+      return [...nextItems.filter(item => !known.has(item.id)), ...current].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       )
     })
@@ -567,9 +500,11 @@ export default function LivePosts({
     let timer: ReturnType<typeof setTimeout> | null = null
     let loadingNow = false
     let reloadQueued = false
+    const postQueue = createPostQueue(addRealtimePosts, () => document.visibilityState !== 'hidden')
 
     const runLoad = async () => {
       if (disposed) return
+      if (document.visibilityState === 'hidden') { reloadQueued = true; return }
 
       if (loadingNow) {
         reloadQueued = true
@@ -577,6 +512,7 @@ export default function LivePosts({
       }
 
       loadingNow = true
+      reloadQueued = false
 
       try {
         await loadRef.current()
@@ -603,6 +539,12 @@ export default function LivePosts({
       }, 400)
     }
 
+    const onResume = () => {
+      if (document.visibilityState === 'hidden') return
+      if (reloadQueued) scheduleLoad()
+      void postQueue.flush()
+    }
+    document.addEventListener('visibilitychange', onResume)
     void runLoad()
     window.addEventListener(PROFILE_UPDATED_EVENT, scheduleLoad)
 
@@ -619,7 +561,7 @@ export default function LivePosts({
         },
         (payload) => {
           const postId = String((payload.new as { id?: string }).id ?? '')
-          if (postId) void addRealtimePost(postId)
+          if (postId) postQueue.enqueue(postId)
         },
       )
       .on(
@@ -658,7 +600,17 @@ export default function LivePosts({
             nextRow?.post_id ?? oldRow?.post_id ?? '',
           )
 
-          if (postId) {
+          const participantId = String(
+            (nextRow as { participant_id?: string })?.participant_id
+              ?? (oldRow as { participant_id?: string })?.participant_id ?? '',
+          )
+          if (postId && participantId && (payload.eventType === 'INSERT' || payload.eventType === 'DELETE')) {
+            setItems(current => current.map(item => {
+              if (item.kind !== 'participant' || item.id !== postId) return item
+              const reactions = applyReactionChange(item.reactions ?? [], participantId, payload.eventType)!
+              return { ...item, reactions, heartCount: reactions.length }
+            }))
+          } else if (postId) {
             void refreshPostHearts(postId)
           }
         },
@@ -685,6 +637,8 @@ export default function LivePosts({
 
     return () => {
       disposed = true
+      postQueue.dispose()
+      document.removeEventListener('visibilitychange', onResume)
       window.removeEventListener(PROFILE_UPDATED_EVENT, scheduleLoad)
 
       if (timer) {
@@ -694,7 +648,7 @@ export default function LivePosts({
       void supabase.removeChannel(channel)
     }
   }, [
-    addRealtimePost,
+    addRealtimePosts,
     mode,
     participantId,
     refreshPostHearts,
@@ -1022,7 +976,8 @@ async function downloadPhoto(post: UserFeedItem) {
                     overflow: 'hidden',
                   }}
                 >
-                  <img
+                  <PersistentPostImage
+                    postId={`admin:${item.id}:${item.image_path}`}
                     src={item.signedUrl}
                     alt="運営からの投稿写真"
                     style={{
@@ -1182,7 +1137,8 @@ async function downloadPhoto(post: UserFeedItem) {
             >
               {post.signedUrl ? (
                 <PersistentPostImage
-                  postId={`gallery-thumb:${post.id}`}
+                  postId={post.storage_provider === 'r2' ? `gallery-thumb:${post.id}` : `supabase-original:${post.id}:${post.image_path}`}
+                  resolveSrc={post.storage_provider === 'r2' ? async () => (await r2ReadUrlMap([post], 'thumbnail', false)).get(post.id) : undefined}
                   src={post.signedUrl}
                   alt={`${
                     post.participants
@@ -1407,7 +1363,8 @@ async function downloadPhoto(post: UserFeedItem) {
             >
               {post.signedUrl ? (
                 <PersistentPostImage
-                  postId={`stream-original:${post.id}`}
+                  postId={post.storage_provider === 'r2' ? `stream-original:${post.id}` : `supabase-original:${post.id}:${post.image_path}`}
+                  resolveSrc={post.storage_provider === 'r2' ? async () => (await r2ReadUrlMap([post], 'original', false)).get(post.id) : undefined}
                   src={post.signedUrl}
                   alt={`${
                     post.participants

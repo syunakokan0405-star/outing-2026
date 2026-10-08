@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import Link from 'next/link'
@@ -14,16 +15,8 @@ import {
   X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-
-type NotificationRow = {
-  id: string
-  title: string
-  body: string | null
-  href: string | null
-  type: string
-  is_read: boolean
-  created_at: string
-}
+import { applyNotificationChange, type NotificationRow } from '@/lib/notification-changes'
+import { getBrowserParticipant } from '@/lib/browser-participant'
 
 export default function NotificationBell() {
   const supabase = useMemo(() => createClient(), [])
@@ -33,6 +26,10 @@ export default function NotificationBell() {
   const [notifications, setNotifications] =
     useState<NotificationRow[]>([])
 
+  const fetchVersion = useRef(0)
+  const activeFetches = useRef(0)
+  const changesDuringFetch = useRef<{ event: string; next: unknown; previous: unknown }[]>([])
+
   const unreadCount = notifications.filter(
     (notification) => !notification.is_read,
   ).length
@@ -40,22 +37,7 @@ export default function NotificationBell() {
   const loadNotifications = useCallback(async () => {
     setLoading(true)
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      setNotifications([])
-      setLoading(false)
-      return
-    }
-
-    const { data: participant } = await supabase
-      .from('participants')
-      .select('id,event_id')
-      .eq('auth_user_id', user.id)
-      .eq('is_active', true)
-      .maybeSingle()
+    const participant = await getBrowserParticipant(supabase).catch(() => null)
 
     if (!participant) {
       setNotifications([])
@@ -63,6 +45,9 @@ export default function NotificationBell() {
       return
     }
 
+    const version = ++fetchVersion.current
+    activeFetches.current++
+    const changeStart = changesDuringFetch.current.length
     const { data, error } = await supabase
       .from('notifications')
       .select(`
@@ -81,12 +66,16 @@ export default function NotificationBell() {
       })
       .limit(50)
 
-    if (!error) {
-      setNotifications(
-        (data ?? []) as NotificationRow[],
-      )
+    if (!error && version === fetchVersion.current) {
+      let rows = (data ?? []) as NotificationRow[]
+      for (const change of changesDuringFetch.current.slice(changeStart)) {
+        rows = applyNotificationChange(rows, change.event, change.next, change.previous) ?? rows
+      }
+      setNotifications(rows)
     }
 
+    activeFetches.current--
+    if (!activeFetches.current) changesDuringFetch.current = []
     setLoading(false)
   }, [supabase])
 
@@ -102,7 +91,14 @@ export default function NotificationBell() {
           schema: 'public',
           table: 'notifications',
         },
-        () => void loadNotifications(),
+        (payload) => {
+          // Full realtime rows already contain the displayed notification fields.
+          // Unknown/partial payloads retain the existing authoritative refresh.
+          const change = applyNotificationChange([], payload.eventType, payload.new, payload.old)
+          if (change === null) { void loadNotifications(); return }
+          if (activeFetches.current) changesDuringFetch.current.push({ event: payload.eventType, next: payload.new, previous: payload.old })
+          setNotifications(current => applyNotificationChange(current, payload.eventType, payload.new, payload.old) ?? current)
+        },
       )
       .subscribe()
 

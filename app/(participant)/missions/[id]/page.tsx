@@ -212,18 +212,6 @@ export default async function MissionDetail({
     redirect('/missions')
   }
 
-  let missionImageUrl = '/mission-default.jpg'
-
-  if (mission.image_path) {
-    const { data: signedImage } = await supabase.storage
-      .from('outing-photos')
-      .createSignedUrl(mission.image_path, 60 * 60)
-
-    if (signedImage?.signedUrl) {
-      missionImageUrl = signedImage.signedUrl
-    }
-  }
-
   const cleared = Boolean(
     assignment.first_cleared_at,
   )
@@ -334,7 +322,8 @@ export default async function MissionDetail({
 >
   <PersistentMissionImage
     missionId={mission.id}
-    src={missionImageUrl}
+    src="/mission-default.jpg"
+    storagePath={mission.image_path ?? undefined}
     alt=""
     style={{
       width: '100%',

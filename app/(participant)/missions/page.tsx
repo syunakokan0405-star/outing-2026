@@ -14,6 +14,8 @@ import {
   ArrowUpRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { getBrowserParticipant } from '@/lib/browser-participant'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
 import PersistentMissionImage from '@/components/PersistentMissionImage'
 
 type MissionItem = {
@@ -112,19 +114,7 @@ export default function Missions() {
         ),
       ]
 
-      const urlMap = new Map<string, string>()
-
-      if (missionImagePaths.length > 0) {
-        const { data: signedImages } = await supabase.storage
-          .from('outing-photos')
-          .createSignedUrls(missionImagePaths, 60 * 60)
-
-        ;(signedImages ?? []).forEach((entry, index) => {
-          if (entry.signedUrl) {
-            urlMap.set(missionImagePaths[index], entry.signedUrl)
-          }
-        })
-      }
+      const urlMap = await storageImageUrlMap(supabase, missionImagePaths)
 
       return baseMissions.map((mission) => ({
         ...mission,
@@ -137,17 +127,15 @@ export default function Missions() {
     async function load() {
       // Authenticate first so user-specific mission data can never leak
       // between accounts sharing the same browser/device.
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const participant = await getBrowserParticipant(supabase).catch(() => null)
 
-      if (!user) {
+      if (!participant) {
         window.location.replace('/join')
         return
       }
 
       // 1) Show only this user's previous mission data immediately.
-      const cached = readCache(eventId, user.id)
+      const cached = readCache(eventId, participant.id)
 
       if (cached?.missions?.length) {
         const cachedWithImages = cached.missions.map((mission) => ({
@@ -169,20 +157,6 @@ export default function Missions() {
 
       try {
         // 2) Refresh participant + mission data in the background.
-        const { data: me, error: meError } = await supabase.rpc(
-          'get_my_participant',
-          { p_event_id: eventId },
-        )
-
-        if (meError) throw meError
-
-        const participant = Array.isArray(me) ? me[0] : me
-
-        if (!participant?.participant_id) {
-          window.location.replace('/join')
-          return
-        }
-
         const { data: assignments, error: assignmentError } =
           await supabase
             .from('mission_assignments')
@@ -203,7 +177,7 @@ export default function Missions() {
                 )
               )
             `)
-            .eq('participant_id', participant.participant_id)
+            .eq('participant_id', participant.id)
             .order('created_at', { ascending: true })
 
         if (assignmentError) throw assignmentError
@@ -233,9 +207,9 @@ export default function Missions() {
               imagePath: assignment.mission.image_path,
             })) ?? []
 
-        writeCache(eventId, user.id, {
+        writeCache(eventId, participant.id, {
           savedAt: Date.now(),
-          participantId: participant.participant_id,
+          participantId: participant.id,
           missions: freshBase,
         })
 

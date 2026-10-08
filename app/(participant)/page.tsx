@@ -14,6 +14,8 @@ import {
 
 import PointTop5 from '@/components/PointTop5'
 import { createClient } from '@/lib/supabase/client'
+import { getBrowserParticipant } from '@/lib/browser-participant'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
 
 type MissionRow = {
   id: string
@@ -41,33 +43,8 @@ type HomeCache = {
   announcementBackgroundPath: string
 }
 
-const HOME_CACHE_VERSION = 'outing-home-v4'
-const UI_IMAGE_CACHE_NAME = 'outing-ui-images-v2'
+const HOME_CACHE_VERSION = 'outing-home-v5'
 const homeMemoryCache = new Map<string, HomeCache>()
-
-async function getCachedHomeImage(
-  stableId: string,
-  signedUrl: string,
-): Promise<string> {
-  if (!('caches' in window)) return signedUrl
-
-  const cache = await caches.open(UI_IMAGE_CACHE_NAME)
-  const stableUrl =
-    `${window.location.origin}/__outing-cache/ui/` +
-    encodeURIComponent(stableId)
-  const request = new Request(stableUrl)
-  const cached = await cache.match(request)
-
-  if (cached) {
-    return URL.createObjectURL(await cached.blob())
-  }
-
-  const response = await fetch(signedUrl)
-  if (!response.ok) return signedUrl
-
-  await cache.put(request, response.clone())
-  return URL.createObjectURL(await response.blob())
-}
 
 function getHomeCacheKey(eventId: string, userId: string) {
   return `${HOME_CACHE_VERSION}:${eventId}:${userId}`
@@ -138,53 +115,22 @@ export default function Home() {
     }
 
     let cancelled = false
-    let announcementObjectUrl: string | null = null
 
     async function applyAnnouncementBackground(path: string) {
-      if (!path) {
-        if (!cancelled) setAnnouncementBackgroundUrl('/outing-bg.jpg')
-        return
-      }
-
-      const { data, error } = await supabase.storage
-        .from('outing-photos')
-        .createSignedUrl(path, 60 * 60)
-
-      if (error || !data?.signedUrl || cancelled) return
-
-      try {
-        const url = await getCachedHomeImage(
-          `announcement:${eventId}:${path}`,
-          data.signedUrl,
-        )
-
-        if (cancelled) {
-          if (url.startsWith('blob:')) URL.revokeObjectURL(url)
-          return
-        }
-
-        if (announcementObjectUrl) {
-          URL.revokeObjectURL(announcementObjectUrl)
-        }
-
-        announcementObjectUrl = url.startsWith('blob:') ? url : null
-        setAnnouncementBackgroundUrl(url)
-      } catch {
-        if (!cancelled) setAnnouncementBackgroundUrl(data.signedUrl)
-      }
+      if (!path) { if (!cancelled) setAnnouncementBackgroundUrl('/outing-bg.jpg'); return }
+      const urls = await storageImageUrlMap(supabase, [path])
+      if (!cancelled && urls.get(path)) setAnnouncementBackgroundUrl(urls.get(path)!)
     }
 
     async function loadHome() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const participant = await getBrowserParticipant(supabase).catch(() => null)
 
-      if (!user) {
+      if (!participant) {
         window.location.replace('/join')
         return
       }
 
-      const cached = readHomeCache(eventId, user.id)
+      const cached = readHomeCache(eventId, participant.id)
 
       if (cached) {
         setAnnouncements(cached.announcements)
@@ -196,20 +142,6 @@ export default function Home() {
       }
 
       try {
-        const { data: me, error: meError } = await supabase.rpc(
-          'get_my_participant',
-          { p_event_id: eventId },
-        )
-
-        if (meError) throw meError
-
-        const participant = Array.isArray(me) ? me[0] : me
-
-        if (!participant?.participant_id) {
-          window.location.replace('/join')
-          return
-        }
-
         // These reads are independent, so run them together.
         const [announcementResult, assignmentResult, eventResult] =
           await Promise.all([
@@ -248,7 +180,7 @@ export default function Home() {
                   )
                 )
               `)
-              .eq('participant_id', participant.participant_id)
+              .eq('participant_id', participant.id)
               .order('created_at', { ascending: false }),
 
             supabase
@@ -333,9 +265,9 @@ export default function Home() {
           cached?.announcementBackgroundPath ??
           ''
 
-        writeHomeCache(eventId, user.id, {
+        writeHomeCache(eventId, participant.id, {
           savedAt: Date.now(),
-          participantId: participant.participant_id,
+          participantId: participant.id,
           announcements: nextAnnouncements,
           missions: nextMissions,
           announcementBackgroundPath,
@@ -362,9 +294,6 @@ export default function Home() {
 
     return () => {
       cancelled = true
-      if (announcementObjectUrl) {
-        URL.revokeObjectURL(announcementObjectUrl)
-      }
     }
   }, [eventId, supabase])
 
@@ -373,7 +302,6 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false
-    let missionObjectUrl: string | null = null
 
     async function applyMissionImage() {
       const imagePath = currentMission?.imagePath
@@ -383,38 +311,14 @@ export default function Home() {
         return
       }
 
-      const { data, error } = await supabase.storage
-        .from('outing-photos')
-        .createSignedUrl(imagePath, 60 * 60)
-
-      if (error || !data?.signedUrl || cancelled) {
-        if (!cancelled) setMissionImageUrl('/mission-default.jpg')
-        return
-      }
-
-      try {
-        const url = await getCachedHomeImage(
-          `mission:${currentMission.id}:${imagePath}`,
-          data.signedUrl,
-        )
-
-        if (cancelled) {
-          if (url.startsWith('blob:')) URL.revokeObjectURL(url)
-          return
-        }
-
-        missionObjectUrl = url.startsWith('blob:') ? url : null
-        setMissionImageUrl(url)
-      } catch {
-        if (!cancelled) setMissionImageUrl(data.signedUrl)
-      }
+      const urls = await storageImageUrlMap(supabase, [imagePath])
+      if (!cancelled) setMissionImageUrl(urls.get(imagePath) ?? '/mission-default.jpg')
     }
 
     void applyMissionImage()
 
     return () => {
       cancelled = true
-      if (missionObjectUrl) URL.revokeObjectURL(missionObjectUrl)
     }
   }, [currentMission?.id, currentMission?.imagePath, supabase])
 
