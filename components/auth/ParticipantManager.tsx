@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 type ParticipantRow = {
@@ -13,8 +14,10 @@ type ParticipantRow = {
 }
 
 export default function ParticipantManager({
-  eventId,
+  eventId, canManagePoints = false, canManagePhotos = false,
 }: {
+  canManagePoints?: boolean
+  canManagePhotos?: boolean
   eventId: string
 }) {
   const supabase = useMemo(() => createClient(), [])
@@ -166,6 +169,7 @@ export default function ParticipantManager({
 
   return (
     <div className="grid">
+      <Link className="backLink" href="/admin">← Dashboard</Link>
       <div className="row">
         <div>
           <div className="brand">OUTING 2026 ADMIN</div>
@@ -269,6 +273,8 @@ export default function ParticipantManager({
                           flexWrap: 'wrap',
                         }}
                       >
+                        {canManagePoints && <Link className="btn outline" href={`/admin/points?participant=${row.id}`}>ポイント調整</Link>}
+                        {canManagePhotos && <Link className="btn outline" href={`/admin/photos?participant=${row.id}`}>写真一覧</Link>}
                         <button
                           className="btn outline"
                           onClick={() => void renameParticipant(row)}

@@ -27,7 +27,7 @@ export default async function ParticipantsPage() {
 
   return (
     <main style={{ maxWidth: 1000, margin: '0 auto', padding: 24 }}>
-      <ParticipantManager eventId={getEventId()} />
+      <ParticipantManager eventId={getEventId()} canManagePoints={['owner', 'admin'].includes(admin.role)} canManagePhotos={['owner', 'admin'].includes(admin.role) || admin.can_manage_photos} />
     </main>
   )
 }

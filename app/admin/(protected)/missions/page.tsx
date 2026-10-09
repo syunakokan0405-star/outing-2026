@@ -85,6 +85,9 @@ export default function AdminMissions() {
   const [busyDropId, setBusyDropId] = useState<string | null>(null)
   const [editingDropId, setEditingDropId] = useState<string | null>(null)
   const [draftDropNumber, setDraftDropNumber] = useState('')
+  const [editingMission, setEditingMission] = useState<MissionRow | null>(null)
+  const [draftMissionTitle, setDraftMissionTitle] = useState('')
+  const [savingMission, setSavingMission] = useState(false)
 
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -605,6 +608,28 @@ export default function AdminMissions() {
     setDraftDropNumber('')
     setBusyDropId(null)
     await loadDrops()
+  }
+
+  async function saveMissionTitle() {
+    if (!editingMission || !draftMissionTitle.trim() || savingMission) return
+    setSavingMission(true)
+    setError('')
+    setMessage('')
+    try {
+      const { error: rpcError } = await supabase.rpc('admin_update_mission_title', {
+        p_mission_id: editingMission.id,
+        p_title: draftMissionTitle.trim(),
+        p_expected_title: editingMission.title,
+      })
+      if (rpcError) throw rpcError
+      setEditingMission(null)
+      setMessage('Missionのお題を変更しました。')
+      await loadDrops()
+    } catch (err) {
+      setError((err as { message?: string }).message ?? 'お題を保存できませんでした。')
+    } finally {
+      setSavingMission(false)
+    }
   }
 
   async function toggleDropStatus(drop: DropRow) {
@@ -1801,6 +1826,39 @@ export default function AdminMissions() {
                               >
                                 {mission.title}
                               </h3>
+                              {editingMission?.id === mission.id ? (
+                                <div style={{ marginTop: 12 }}>
+                                  <label>
+                                    お題の文章
+                                    <textarea
+                                      aria-label="お題の文章"
+                                      value={draftMissionTitle}
+                                      maxLength={500}
+                                      disabled={savingMission}
+                                      onChange={(e) => setDraftMissionTitle(e.target.value)}
+                                      style={inputStyle}
+                                      autoFocus
+                                    />
+                                  </label>
+                                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,.55)' }}>
+                                    お題の文章を変更します。得点・配布先・既存の投稿との紐づけは維持されます。
+                                  </p>
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    <button className="btn primary" disabled={savingMission || !draftMissionTitle.trim()} onClick={() => void saveMissionTitle()}>
+                                      {savingMission ? '保存中...' : '保存'}
+                                    </button>
+                                    <button className="btn outline" disabled={savingMission} onClick={() => setEditingMission(null)}>やめる</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button className="btn outline" style={{ marginTop: 12 }} disabled={savingMission || busyDropId === drop.id} onClick={() => {
+                                  setEditingMission(mission)
+                                  setDraftMissionTitle(mission.title)
+                                  setError('')
+                                  setMessage('')
+                                }}>お題を編集</button>
+                              )}
+
 
                               <div
                                 style={{
