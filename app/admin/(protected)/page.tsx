@@ -9,6 +9,7 @@ import {
   Target,
   Trophy,
   Users,
+  Coins,
 } from 'lucide-react'
 
 import AdminLogout from '@/components/auth/AdminLogout'
@@ -183,11 +184,12 @@ export default async function Admin() {
   ]
 
   const actions = [
+    { href: '/admin/points', title: 'Points', description: 'ポイントの加算・減算と調整履歴', icon: Coins },
     {
       href: '/admin/missions',
       title: 'Mission Drop',
       description:
-        'ミッション・Dropを作成、公開',
+        'ミッション・Dropの配布とお題編集',
       icon: Target,
     },
     {
@@ -215,7 +217,7 @@ export default async function Admin() {
       href: '/admin/photos',
       title: 'Photos',
       description:
-        '参加者の写真投稿を確認・管理',
+        '参加者別の写真一覧・取り消し・復元',
       icon: Camera,
     },
     {
