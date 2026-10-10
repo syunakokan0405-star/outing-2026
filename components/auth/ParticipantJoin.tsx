@@ -7,7 +7,6 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   Check,
   Search,
@@ -29,7 +28,6 @@ export default function ParticipantJoin({
 }: {
   eventId: string
 }) {
-  const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
   const [choices, setChoices] = useState<ParticipantChoice[]>([])
@@ -66,19 +64,6 @@ export default function ParticipantJoin({
 
         if (!authUser) {
           throw new Error('匿名ログインを開始できませんでした')
-        }
-
-        const { data: mine } = await supabase
-          .from('participants')
-          .select('id')
-          .eq('event_id', eventId)
-          .eq('auth_user_id', authUser.id)
-          .maybeSingle()
-
-        if (mine?.id) {
-          router.replace('/')
-          router.refresh()
-          return
         }
 
         const {
@@ -120,7 +105,7 @@ export default function ParticipantJoin({
     return () => {
       cancelled = true
     }
-  }, [eventId, router, supabase])
+  }, [eventId, supabase])
 
   const filtered = choices.filter((participant) =>
     participant.participant_name
@@ -175,8 +160,9 @@ export default function ParticipantJoin({
       return
     }
 
-    router.replace('/')
-    router.refresh()
+    // Registration changes server-side access. Read it with a fresh request,
+    // rather than reusing a Router Cache entry from before registration.
+    window.location.replace('/')
   }
 
   const selectedParticipant =
@@ -187,7 +173,7 @@ export default function ParticipantJoin({
 
   return (
     <main
-      className="participantUi outingSans"
+      className="participantUi participantJoin outingSans"
       style={{
         position: 'fixed',
         inset: 0,

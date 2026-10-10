@@ -380,6 +380,8 @@
   unicode-range:U+0030-0039;
 }
 .participantHeader{padding-top:24px;margin-bottom:20px}
+/* Keep the viewport dark while Join initializes and loads its background. */
+html:has(.participantJoin),body:has(.participantJoin){background:#0a0b10;color-scheme:dark}
 .participantHeaderWithLogo{display:flex;align-items:center;gap:14px}
 .participantHeaderLogo{
   display:block;

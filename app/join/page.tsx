@@ -1,8 +1,12 @@
 import ParticipantJoin from '@/components/auth/ParticipantJoin'
-import { getEventId } from '@/lib/auth'
+import { redirect } from 'next/navigation'
+import { getCurrentParticipant, getEventId } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
-export default function JoinPage() {
-  return <main className="shell"><ParticipantJoin eventId={getEventId()} /></main>
+export default async function JoinPage() {
+  // Use the same verified session and active-participant lookup as the Home
+  // guard, so a browser-only session cannot bounce Home back to Join forever.
+  if (await getCurrentParticipant()) redirect('/')
+  return <ParticipantJoin eventId={getEventId()} />
 }
