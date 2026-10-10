@@ -374,7 +374,7 @@ return (
             HEADER
         ========================= */}
 
-        <ParticipantHeader />
+        <ParticipantHeader title="HOME" showLogo />
 
         {/* =========================
             ANNOUNCEMENT
