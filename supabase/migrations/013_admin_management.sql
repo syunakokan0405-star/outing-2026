@@ -1,6 +1,9 @@
 -- Apply after 012. All mutations and their audit records commit atomically.
 begin;
 
+-- Some live projects retain delete_post(uuid) and lack the later reason column.
+alter table public.posts add column if not exists deleted_reason text;
+
 alter table public.point_transactions
   add column if not exists adjustment_note text,
   add column if not exists adjusted_by_admin_id uuid references public.admin_users(id) on delete set null,
@@ -26,6 +29,7 @@ create table if not exists public.admin_post_recovery (
 );
 alter table public.admin_post_recovery enable row level security;
 revoke all on public.admin_post_recovery from public, anon, authenticated;
+grant select on public.admin_post_recovery to service_role;
 
 -- Keep the original four-argument RPC usable; new callers supply a retry key.
 drop function if exists public.admin_adjust_points(uuid, uuid, integer, text);
@@ -90,7 +94,7 @@ end $$;
 -- order. This serializes cancellation/restoration against a new mission clear.
 create or replace function public.admin_cancel_post(p_post_id uuid, p_reason text)
 returns void language plpgsql security definer set search_path = '' as $$
-declare v_post public.posts; v_clear timestamptz; v_ids uuid[];
+declare v_post public.posts; v_clear timestamptz; v_ids uuid[]; v_admin uuid;
 begin
   select * into v_post from public.posts where id = p_post_id;
   if not found then raise exception '投稿が見つかりません。'; end if;
@@ -111,7 +115,20 @@ begin
   values(p_post_id, v_ids, v_clear)
   on conflict(post_id) do update set point_ids = excluded.point_ids,
     first_cleared_at = excluded.first_cleared_at, cancelled_at = now();
-  perform public.delete_post(p_post_id, btrim(p_reason));
+  -- Keep administrative cancellation independent of historical delete_post overloads.
+  select id into v_admin from public.admin_users
+    where event_id = v_post.event_id and auth_user_id = auth.uid()
+      and (role in ('owner', 'admin') or can_manage_photos);
+  update public.posts set deleted_at = now(), deleted_reason = btrim(p_reason),
+    deleted_by_participant = false, deleted_by_admin_id = v_admin where id = p_post_id;
+  update public.point_transactions set is_active = false, revoked_at = now(),
+    revoked_by_admin_id = v_admin where post_id = p_post_id and is_active;
+  update public.mission_assignments set first_cleared_at = null, first_clear_post_id = null
+    where first_clear_post_id = p_post_id;
+  insert into public.admin_logs(event_id, admin_user_id, action, target_type, target_id, metadata)
+  values(v_post.event_id, v_admin, 'post_cancelled', 'post', p_post_id,
+    jsonb_build_object('reason', btrim(p_reason)));
+
 end $$;
 
 create or replace function public.admin_restore_post(p_post_id uuid)
