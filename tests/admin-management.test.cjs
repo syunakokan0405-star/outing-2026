@@ -19,7 +19,7 @@ const nextPost = '60000000-0000-0000-0000-000000000002'
 
 async function setup() {
   const db = new PGlite()
-  await db.exec(`create role anon; create role authenticated; create schema auth;
+  await db.exec(`create role anon; create role authenticated; create role service_role; create schema auth;
     create table auth.users(id uuid primary key);
     create function auth.uid() returns uuid language sql as
       $$select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid$$;
@@ -115,7 +115,7 @@ test('admin management database behavior', async t => {
       assert.equal(await score(db), 50)
       assert.equal(await score(db, mention), 50)
       assert.equal(await call(db, 'first_clear_post_id from public.mission_assignments where participant_id = $1', [person]), post)
-      assert.equal(Number(await call(db, 'count(*) from public.post_deletion_logs')), 1)
+      assert.equal(Number(await call(db, "count(*) from public.admin_logs where action = 'post_cancelled'")), 1)
     })
     await t.test('re-clear after cancellation restores only photo, without duplicate rewards', async () => {
       await call(db, 'public.admin_cancel_post($1,$2)', [post, 'Wrong photo'])
