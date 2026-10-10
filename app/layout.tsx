@@ -29,6 +29,19 @@ const notoSerifJP = Noto_Serif_JP({
 export const metadata = {
   title: 'Outing 2026',
   description: 'Outing 2026 event app',
+  applicationName: 'Outing 2026',
+  icons: {
+    icon: [
+      { url: '/icons/nic-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/nic-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: { url: '/icons/nic-180.png', sizes: '180x180', type: 'image/png' },
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'Outing 2026',
+    statusBarStyle: 'default',
+  },
 }
 
 export default function RootLayout({
