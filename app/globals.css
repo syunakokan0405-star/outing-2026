@@ -380,6 +380,17 @@
   unicode-range:U+0030-0039;
 }
 .participantHeader{padding-top:24px;margin-bottom:20px}
+.participantHeaderWithLogo{display:flex;align-items:center;gap:14px}
+.participantHeaderLogo{
+  display:block;
+  width:56px;
+  height:56px;
+  flex:none;
+  background:var(--outing-purple-soft);
+  opacity:.65;
+  -webkit-mask:url("/brand/nic-header.svg") center / contain no-repeat;
+  mask:url("/brand/nic-header.svg") center / contain no-repeat;
+}
 .participantBrand{margin:0;color:rgba(255,255,255,.58);font-size:11px;font-weight:500;letter-spacing:.18em;line-height:normal}
 .participantTitle{margin:7px 0 0;color:#fff;font-size:34px;font-weight:500;line-height:1;letter-spacing:.14em}
 .homeMissionContent{justify-content:flex-start;padding-top:18px}
