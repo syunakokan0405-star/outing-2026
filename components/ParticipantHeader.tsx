@@ -1,7 +1,7 @@
 /** Shared participant heading, matching the Guide page. */
 export default function ParticipantHeader({
   title,
-  showLogo = false,
+  showLogo = true,
 }: {
   title?: string
   showLogo?: boolean
