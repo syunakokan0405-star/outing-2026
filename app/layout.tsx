@@ -32,10 +32,10 @@ export const metadata = {
   applicationName: 'Outing 2026',
   icons: {
     icon: [
-      { url: '/icons/nic-32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/icons/nic-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/nic-dark-v2-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/nic-dark-v2-192.png', sizes: '192x192', type: 'image/png' },
     ],
-    apple: { url: '/icons/nic-180.png', sizes: '180x180', type: 'image/png' },
+    apple: { url: '/icons/nic-dark-v2-180.png', sizes: '180x180', type: 'image/png' },
   },
   appleWebApp: {
     capable: true,
