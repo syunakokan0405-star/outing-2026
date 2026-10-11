@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: '/',
     name: 'Outing 2026',
     short_name: 'Outing 2026',
     description: 'Outing 2026 event app',
