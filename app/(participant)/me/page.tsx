@@ -1,5 +1,6 @@
 'use client'
 
+import { claimHiddenBonus } from '@/lib/hidden-bonus'
 import ParticipantHeader from '@/components/ParticipantHeader'
 
 import Link from 'next/link'
@@ -353,6 +354,19 @@ export default function Me() {
     score,
   ])
 
+  useEffect(() => {
+    const refreshScore = async () => {
+      if (!eventId) return
+      const { data } = await supabase.rpc('get_my_rank', { p_event_id: eventId })
+      if (Array.isArray(data) && data[0]) {
+        setScore(Number(data[0].score ?? 0))
+        setRank(Number(data[0].rank ?? 0))
+      }
+    }
+    window.addEventListener('outing:hidden-bonus', refreshScore)
+    return () => window.removeEventListener('outing:hidden-bonus', refreshScore)
+  }, [supabase, eventId])
+
   async function openConnections() {
     if (!participantId) return
 
@@ -407,6 +421,7 @@ export default function Me() {
       )
 
       setConnectionPeople(withAvatars)
+      if (ids.length > 20) void claimHiddenBonus('connections_20')
     } catch (error) {
       console.error(error)
       alert(

@@ -13,6 +13,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { getBrowserParticipant } from '@/lib/browser-participant'
 import { createPostQueue } from '@/lib/realtime-post-queue'
+import { claimHiddenBonus } from '@/lib/hidden-bonus'
 import { applyReactionChange } from '@/lib/feed-reactions'
 import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 import { r2PostUrlMap as r2ReadUrlMap } from '@/lib/post-image-urls'
@@ -671,6 +672,7 @@ export default function LivePosts({
     }
 
     void refreshPostHearts(post.id)
+    void claimHiddenBonus('hearts_15')
   }
 
 async function downloadPhoto(post: UserFeedItem) {

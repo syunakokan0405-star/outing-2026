@@ -1,5 +1,6 @@
 'use client'
 
+import GuideReadEnd from '@/components/GuideReadEnd'
 import ParticipantHeader from '@/components/ParticipantHeader'
 
 import Link from 'next/link'
@@ -388,6 +389,7 @@ export default function GuidePage() {
                             </article>
                           ))
                         )}
+                        {categorySections.length > 0 && (category.type === 'schedule' || category.type === 'rules') && <GuideReadEnd kind={category.type === 'schedule' ? 'schedule_read' : 'rules_read'} />}
                       </div>
                     </details>
                   </div>
