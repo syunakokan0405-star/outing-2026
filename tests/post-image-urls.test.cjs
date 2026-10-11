@@ -16,6 +16,21 @@ function setup({cached=false,broken=false}={}) {
   return {exports,calls,time(n){now=n},fail(){fails++}}
 }
 const post=id=>({id,storage_provider:'r2',r2_object_key:`${id}.webp`,r2_thumbnail_key:`${id}-thumb.webp`})
+test('stream and gallery mount the image loader for cached R2 posts without a signed URL',()=>{
+  const source=ts.createSourceFile('LivePosts.tsx',readFileSync('components/LivePosts.tsx','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX)
+  const conditions=[]
+  function visit(node){
+    if(ts.isConditionalExpression(node) && node.whenTrue.getText(source).includes('<PersistentPostImage') && node.condition.getText(source).includes('post.signedUrl')) conditions.push(node.condition.getText(source))
+    ts.forEachChild(node,visit)
+  }
+  visit(source)
+  assert.equal(conditions.length,2)
+  for(const condition of conditions){
+    assert.equal(Boolean(vm.runInNewContext(condition,{post:{signedUrl:'',storage_provider:'r2'}})),true)
+    assert.equal(Boolean(vm.runInNewContext(condition,{post:{signedUrl:'',storage_provider:'supabase'}})),false)
+    assert.equal(Boolean(vm.runInNewContext(condition,{post:{signedUrl:'https://images/photo',storage_provider:'supabase'}})),true)
+  }
+})
 test('cached original needs no signature; thumbnail remains separate',async()=>{
   const b=setup({cached:true})
   assert.equal((await b.exports.r2PostUrlMap([post('a')],'original')).size,0)

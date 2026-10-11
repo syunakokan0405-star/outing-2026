@@ -171,7 +171,7 @@ export default function PersistentPostImage({
           style={{
             width: '100%',
             height: '100%',
-            minHeight: 'inherit',
+            minHeight: style?.height === '100%' ? 'inherit' : 240,
             background: 'rgba(255,255,255,.035)',
           }}
         />

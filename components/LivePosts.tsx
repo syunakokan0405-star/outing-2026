@@ -1137,7 +1137,7 @@ async function downloadPhoto(post: UserFeedItem) {
                   '1px solid rgba(255,255,255,.08)',
               }}
             >
-              {post.signedUrl ? (
+              {post.signedUrl || post.storage_provider === 'r2' ? (
                 <PersistentPostImage
                   postId={post.storage_provider === 'r2' ? `gallery-thumb:${post.id}` : `supabase-original:${post.id}:${post.image_path}`}
                   resolveSrc={post.storage_provider === 'r2' ? async () => (await r2ReadUrlMap([post], 'thumbnail', false)).get(post.id) : undefined}
@@ -1363,7 +1363,7 @@ async function downloadPhoto(post: UserFeedItem) {
                 background: '#090a0d',
               }}
             >
-              {post.signedUrl ? (
+              {post.signedUrl || post.storage_provider === 'r2' ? (
                 <PersistentPostImage
                   postId={post.storage_provider === 'r2' ? `stream-original:${post.id}` : `supabase-original:${post.id}:${post.image_path}`}
                   resolveSrc={post.storage_provider === 'r2' ? async () => (await r2ReadUrlMap([post], 'original', false)).get(post.id) : undefined}
