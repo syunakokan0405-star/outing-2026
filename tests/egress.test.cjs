@@ -6,7 +6,7 @@ const ts = require('typescript')
 function moduleAt(file, globals) {
   const exports = {}
   const js = ts.transpileModule(readFileSync(file,'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
-  vm.runInNewContext(js,{ exports, console: { error() {} }, ...globals })
+  vm.runInNewContext(js,{ exports, require(name) { if (name === '@/lib/background-assets') return moduleAt('lib/background-assets.ts', {}); throw new Error(name) }, process:{env:{NEXT_PUBLIC_EVENT_ID:'event'}}, console: { error() {} }, ...globals })
   return exports
 }
 function storageSetup(store = new Map()) {
@@ -127,4 +127,31 @@ test('sign-out during a membership lookup cannot restore the old UI identity', a
   listener('SIGNED_OUT')
   complete({data:{id:'old-participant'},error:null})
   assert.equal(await result,null)
+})
+
+ test('backgrounds use the R2 endpoint without any Supabase image signatures', async () => {
+  const b = storageSetup()
+  await Promise.all([
+    b.exports.storageImageUrlMap(b.supabase,['mission-backgrounds/event/old.jpg','r2:assets/event/home/new.webp']),
+    b.exports.storageImageUrlMap(b.supabase,['mission-backgrounds/event/old.jpg']),
+  ])
+  assert.deepEqual(b.counts,{signatures:0,downloads:2})
+})
+test('background paths are confined to the current event', () => {
+  const {isBackgroundPath} = moduleAt('lib/background-assets.ts',{})
+  assert.equal(isBackgroundPath('r2:assets/event/home/new.webp','event'),true)
+  for (const path of ['r2:assets/other/home/new.webp','r2:assets/event/../secret','event-backgrounds/event/x?x=1','posts/event/private.jpg']) {
+    assert.equal(isBackgroundPath(path,'event'),false)
+  }
+})
+test('background metadata shares concurrent requests, expires and invalidates after changes', async () => {
+  let calls=0, now=0, user='a'
+  const {getEventBackgrounds,invalidateEventBackgrounds} = moduleAt('lib/event-backgrounds.ts',{Date:{now:()=>now}})
+  const db={auth:{async getSession(){return {data:{session:{user:{id:user}}},error:null}}},from(){calls++;const q={select(){return q},eq(){return q},async maybeSingle(){return {data:{guide_background_path:'image'},error:null}}};return q}}
+  await Promise.all([getEventBackgrounds(db,'event'),getEventBackgrounds(db,'event')])
+  assert.equal(calls,1)
+  await getEventBackgrounds(db,'event');assert.equal(calls,1)
+  now=30001;await getEventBackgrounds(db,'event');assert.equal(calls,2)
+  invalidateEventBackgrounds();await getEventBackgrounds(db,'event');assert.equal(calls,3)
+  user='b';await getEventBackgrounds(db,'event');assert.equal(calls,4)
 })

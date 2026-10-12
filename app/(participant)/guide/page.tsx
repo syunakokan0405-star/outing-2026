@@ -19,6 +19,7 @@ import {
   CalendarDays,
   CircleEllipsis,
 } from 'lucide-react'
+import { getEventBackgrounds } from '@/lib/event-backgrounds'
 import { createClient } from '@/lib/supabase/client'
 import { storageImageUrlMap } from '@/lib/storage-image-urls'
 
@@ -114,11 +115,7 @@ export default function GuidePage() {
           .select('id,section_type,title,body,sort_order')
           .eq('event_id', EVENT_ID)
           .order('sort_order', { ascending: true }),
-        supabase
-          .from('events')
-          .select('guide_background_path')
-          .eq('id', EVENT_ID)
-          .maybeSingle(),
+        getEventBackgrounds(supabase, EVENT_ID),
       ])
 
       if (cancelled) return

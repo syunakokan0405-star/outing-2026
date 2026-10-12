@@ -12,6 +12,8 @@ import {
   Image as ImageIcon,
   Upload,
 } from 'lucide-react'
+import { backgroundAssetUrl, uploadBackgroundAsset } from '@/lib/background-assets'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
 import { createClient } from '@/lib/supabase/client'
 
 type BackgroundType =
@@ -40,6 +42,25 @@ export default function HomeBackgroundsPage() {
       announcement: '',
       guide: '',
     })
+
+  const [migrating, setMigrating] = useState(false)
+
+  async function migrateBackgrounds() {
+    setMigrating(true); setError(''); setMessage('')
+    let total = 0
+    try {
+      let remaining = 1
+      while (remaining > 0) {
+        const response = await fetch('/api/r2/assets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'migrate', kind: 'home' }) })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || '移行に失敗しました。')
+        total += result.migrated; remaining = result.remaining
+        setMessage(`画像をR2へ移行中：${total}件完了、残り${remaining}件`)
+      }
+      setMessage(`ホーム・ガイド・ミッション背景をR2へ移行しました（${total}件）。`)
+    } catch (error) { setError(error instanceof Error ? error.message : '移行に失敗しました。途中までの移行は保存されています。') }
+    finally { setMigrating(false) }
+  }
 
   const [loading, setLoading] =
     useState(true)
@@ -97,29 +118,7 @@ export default function HomeBackgroundsPage() {
         guidePath,
       ].filter(Boolean)
 
-      const urls =
-        new Map<string, string>()
-
-      if (paths.length) {
-        const { data: signedData } =
-          await supabase.storage
-            .from('outing-photos')
-            .createSignedUrls(
-              paths,
-              60 * 60,
-            )
-
-        ;(signedData ?? []).forEach(
-          (entry, index) => {
-            if (entry.signedUrl) {
-              urls.set(
-                paths[index],
-                entry.signedUrl,
-              )
-            }
-          },
-        )
-      }
+      const urls = await storageImageUrlMap(supabase, paths)
 
       setBackgrounds({
         ranking: rankingPath
@@ -167,31 +166,10 @@ export default function HomeBackgroundsPage() {
     setMessage('')
     setError('')
 
-    const extension =
-      file.name
-        .split('.')
-        .pop()
-        ?.toLowerCase() ?? 'jpg'
-
-    const storagePath =
-      `event-backgrounds/${eventId}/${type}.${extension}`
-
-    const {
-      error: uploadError,
-    } = await supabase.storage
-      .from('outing-photos')
-      .upload(
-        storagePath,
-        file,
-        {
-          upsert: true,
-          contentType: file.type,
-          cacheControl: '3600',
-        },
-      )
-
-    if (uploadError) {
-      setError(uploadError.message)
+    let storagePath: string
+    try { storagePath = await uploadBackgroundAsset(file, 'home') }
+    catch (error) {
+      setError(error instanceof Error ? error.message : 'アップロードに失敗しました。')
       setSaving(null)
       return
     }
@@ -214,36 +192,7 @@ export default function HomeBackgroundsPage() {
       return
     }
 
-    const {
-      data: signedData,
-      error: signedError,
-    } = await supabase.storage
-      .from('outing-photos')
-      .createSignedUrl(
-        storagePath,
-        60 * 60,
-      )
-
-    if (
-      signedError ||
-      !signedData?.signedUrl
-    ) {
-      setError(
-        signedError?.message ??
-          'プレビューURLを取得できませんでした。',
-      )
-      setSaving(null)
-      return
-    }
-
-    setBackgrounds(
-      (current) => ({
-        ...current,
-
-        [type]:
-          `${signedData.signedUrl}&t=${Date.now()}`,
-      }),
-    )
+    setBackgrounds(current => ({ ...current, [type]: backgroundAssetUrl(storagePath) }))
 
     const successMessages:
       Record<
@@ -323,6 +272,10 @@ export default function HomeBackgroundsPage() {
           参加者画面で使用する写真を変更できます。
         </p>
       </div>
+
+      <button className="btn" disabled={migrating || saving !== null} onClick={() => void migrateBackgrounds()}>
+        {migrating ? '移行中...' : '登録済みの背景画像をR2へ移行'}
+      </button>
 
       {message && (
         <section className="card">
@@ -481,7 +434,7 @@ export default function HomeBackgroundsPage() {
                     type="file"
                     accept="image/*"
                     disabled={
-                      saving !==
+                      migrating || saving !==
                       null
                     }
                     onChange={(

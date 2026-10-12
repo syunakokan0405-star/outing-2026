@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Trophy } from 'lucide-react'
+import { getEventBackgrounds, invalidateEventBackgrounds } from '@/lib/event-backgrounds'
 import { createClient } from '@/lib/supabase/client'
 import { getBrowserParticipant } from '@/lib/browser-participant'
 import { storageImageUrlMap } from '@/lib/storage-image-urls'
@@ -110,7 +111,7 @@ export default function PointTop5() {
       // Ranking and event background metadata are independent.
       const [eventResult, rankResult] = await Promise.all([
         backgroundPathRef.current === null
-          ? supabase.from('events').select('ranking_background_path').eq('id', eventId).maybeSingle()
+          ? getEventBackgrounds(supabase, eventId)
           : Promise.resolve({ data: { ranking_background_path: backgroundPathRef.current }, error: null }),
         supabase.rpc('get_event_top5', {
           p_event_id: eventId,
@@ -211,15 +212,15 @@ export default function PointTop5() {
     }
     const schedule = () => {
       if (disposed) return
-      if (debounce) clearTimeout(debounce)
-      debounce = setTimeout(() => { debounce = undefined; void refresh() }, 500)
+      if (debounce) return
+      debounce = setTimeout(() => { debounce = undefined; void refresh() }, Math.max(500, 5_000 - (Date.now() - lastRefresh)))
     }
     void refresh()
     const channel = supabase.channel('home-point-ranking')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, schedule)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, schedule)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'point_transactions' }, schedule)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events' }, () => { backgroundPathRef.current = null; schedule() })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events' }, () => { invalidateEventBackgrounds(); backgroundPathRef.current = null; schedule() })
       .subscribe()
     // Missed updates are recovered every five minutes while visible.
     const timer = window.setInterval(() => {

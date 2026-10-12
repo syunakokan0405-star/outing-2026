@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { backgroundAssetUrl, uploadBackgroundAsset } from '@/lib/background-assets'
 import { createClient } from '@/lib/supabase/client'
 
 type MissionForm = {
@@ -97,11 +98,7 @@ export default function AdminMissions() {
   function getMissionImageUrl(imagePath: string | null) {
     if (!imagePath) return '/mission-default.jpg'
 
-    const { data } = supabase.storage
-      .from('outing-photos')
-      .getPublicUrl(imagePath)
-
-    return data.publicUrl
+    return backgroundAssetUrl(imagePath)
   }
 
   function updateMission(
@@ -263,29 +260,7 @@ export default function AdminMissions() {
       throw new Error('EVENT IDが設定されていません。')
     }
 
-    const extension =
-      file.name.split('.').pop()?.toLowerCase() ||
-      file.type.split('/').pop() ||
-      'jpg'
-
-    const slot = String.fromCharCode(65 + index)
-
-    const path =
-      `mission-backgrounds/${eventId}/${uploadKey}-${slot}.${extension}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('outing-photos')
-      .upload(path, file, {
-        upsert: false,
-        contentType: file.type || undefined,
-        cacheControl: '3600',
-      })
-
-    if (uploadError) {
-      throw uploadError
-    }
-
-    return path
+    return uploadBackgroundAsset(file, 'mission')
   }
 
   async function uploadCommonMissionImage(
@@ -297,27 +272,7 @@ export default function AdminMissions() {
       throw new Error('EVENT IDが設定されていません。')
     }
 
-    const extension =
-      file.name.split('.').pop()?.toLowerCase() ||
-      file.type.split('/').pop() ||
-      'jpg'
-
-    const path =
-      `mission-backgrounds/${eventId}/${uploadKey}-COMMON-${index + 1}.${extension}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('outing-photos')
-      .upload(path, file, {
-        upsert: false,
-        contentType: file.type || undefined,
-        cacheControl: '3600',
-      })
-
-    if (uploadError) {
-      throw uploadError
-    }
-
-    return path
+    return uploadBackgroundAsset(file, 'mission')
   }
 
   async function loadDrops() {

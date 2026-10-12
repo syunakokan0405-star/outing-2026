@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 
 import PointTop5 from '@/components/PointTop5'
+import { getEventBackgrounds } from '@/lib/event-backgrounds'
 import { createClient } from '@/lib/supabase/client'
 import { getBrowserParticipant } from '@/lib/browser-participant'
 import { storageImageUrlMap } from '@/lib/storage-image-urls'
@@ -185,11 +186,7 @@ export default function Home() {
               .eq('participant_id', participant.id)
               .order('created_at', { ascending: false }),
 
-            supabase
-              .from('events')
-              .select('announcement_background_path')
-              .eq('id', eventId)
-              .maybeSingle(),
+            getEventBackgrounds(supabase, eventId),
           ])
 
         if (announcementResult.error) {

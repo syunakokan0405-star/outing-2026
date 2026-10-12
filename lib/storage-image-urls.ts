@@ -1,3 +1,4 @@
+import { backgroundAssetUrl, isBackgroundPath } from '@/lib/background-assets'
 import type { createClient } from '@/lib/supabase/client'
 
 const CACHE_NAME = 'outing-shared-storage-images-v1'
@@ -38,11 +39,17 @@ export async function storageImageUrlMap(supabase: ReturnType<typeof createClien
         missing.push(owner)
       }))
       if (missing.length) {
-        const { data, error } = await supabase.storage.from('outing-photos')
-          .createSignedUrls(missing.map(owner => owner.path), 60 * 60)
-        if (error) throw error
-        const signed = new Map((data ?? []).filter(entry => entry.path && entry.signedUrl)
-          .map(entry => [entry.path!, entry.signedUrl!]))
+        const signed = new Map<string, string>()
+        const legacy = missing.filter(owner => !isBackgroundPath(owner.path, process.env.NEXT_PUBLIC_EVENT_ID ?? ''))
+        for (const owner of missing) {
+          if (!legacy.includes(owner)) signed.set(owner.path, backgroundAssetUrl(owner.path))
+        }
+        if (legacy.length) {
+          const { data, error } = await supabase.storage.from('outing-photos')
+            .createSignedUrls(legacy.map(owner => owner.path), 60 * 60)
+          if (error) throw error
+          for (const entry of data ?? []) { if (entry.path && entry.signedUrl) signed.set(entry.path, entry.signedUrl) }
+        }
         await Promise.all(missing.map(async owner => {
           const src = signed.get(owner.path)
           if (!src) return
