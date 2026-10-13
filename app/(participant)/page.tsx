@@ -46,7 +46,7 @@ type HomeCache = {
   announcementBackgroundPath: string
 }
 
-const HOME_CACHE_VERSION = 'outing-home-v5'
+const HOME_CACHE_VERSION = 'outing-home-v6'
 const homeMemoryCache = new Map<string, HomeCache>()
 
 function getHomeCacheKey(eventId: string, userId: string) {
@@ -125,174 +125,190 @@ export default function Home() {
       if (!cancelled && urls.get(path)) setAnnouncementBackgroundUrl(urls.get(path)!)
     }
 
+    let homeRequestPending = false
     async function loadHome() {
-      const participant = await getBrowserParticipant(supabase).catch(() => null)
-
-      if (!participant) {
-        window.location.replace('/join')
-        return
-      }
-
-      const cached = readHomeCache(eventId, participant.id)
-
-      if (cached) {
-        setAnnouncements(cached.announcements)
-        setNormalizedMissions(cached.missions)
-        setLoading(false)
-        void applyAnnouncementBackground(
-          cached.announcementBackgroundPath ?? '',
-        )
-      }
-
+      if (cancelled || homeRequestPending) return
+      homeRequestPending = true
       try {
-        // These reads are independent, so run them together.
-        const [announcementResult, assignmentResult, eventResult] =
-          await Promise.all([
-            supabase
-              .from('announcements')
-              .select(`
-                id,
-                title,
-                body,
-                published_at,
-                created_at
-              `)
-              .eq('event_id', eventId)
-              .eq('is_published', true)
-              .order('published_at', {
-                ascending: false,
-                nullsFirst: false,
-              })
-              .limit(3),
+        const participant = await getBrowserParticipant(supabase).catch(() => null)
 
-            supabase
-              .from('mission_assignments')
-              .select(`
-                id,
-                first_cleared_at,
-                mission:missions (
+        if (!participant) {
+          window.location.replace('/join')
+          return
+        }
+
+        const cached = readHomeCache(eventId, participant.id)
+
+        if (cached) {
+          setAnnouncements(cached.announcements)
+          setNormalizedMissions(cached.missions)
+          setLoading(false)
+          void applyAnnouncementBackground(
+            cached.announcementBackgroundPath ?? '',
+          )
+        }
+
+        try {
+          // These reads are independent, so run them together.
+          const [announcementResult, assignmentResult, eventResult] =
+            await Promise.all([
+              supabase
+                .from('announcements')
+                .select(`
                   id,
                   title,
-                  difficulty,
-                  points,
-                  image_path,
-                  drop:mission_drops (
-                    event_id,
-                    status,
-                    drop_number
+                  body,
+                  published_at,
+                  created_at
+                `)
+                .eq('event_id', eventId)
+                .eq('is_published', true)
+                .order('published_at', {
+                  ascending: false,
+                  nullsFirst: false,
+                })
+                .limit(3),
+
+              supabase
+                .from('mission_assignments')
+                .select(`
+                  id,
+                  first_cleared_at,
+                  mission:missions (
+                    id,
+                    title,
+                    difficulty,
+                    points,
+                    image_path,
+                    drop:mission_drops (
+                      event_id,
+                      status,
+                      drop_number
+                    )
                   )
-                )
-              `)
-              .eq('participant_id', participant.id)
-              .order('created_at', { ascending: false }),
+                `)
+                .eq('participant_id', participant.id)
+                .order('created_at', { ascending: false }),
 
-            getEventBackgrounds(supabase, eventId),
-          ])
+              getEventBackgrounds(supabase, eventId),
+            ])
 
-        if (announcementResult.error) {
-          setAnnouncementError(
-            new Error(announcementResult.error.message),
-          )
-        } else {
-          setAnnouncementError(null)
-        }
-
-        if (assignmentResult.error) {
-          setMissionError(new Error(assignmentResult.error.message))
-        } else {
-          setMissionError(null)
-        }
-
-        const freshAnnouncements =
-          (announcementResult.data ?? []) as AnnouncementRow[]
-
-        const freshMissions: MissionRow[] =
-          (assignmentResult.data ?? [])
-            .map((assignment: any): MissionRow | null => {
-              const mission = Array.isArray(assignment.mission)
-                ? assignment.mission[0]
-                : assignment.mission
-
-              if (!mission) return null
-
-              const drop = Array.isArray(mission.drop)
-                ? mission.drop[0]
-                : mission.drop
-
-              if (
-                !drop ||
-                drop.event_id !== eventId ||
-                drop.status !== 'published'
-              ) {
-                return null
-              }
-
-              return {
-                id: mission.id,
-                title: mission.title,
-                difficulty: mission.difficulty,
-                points: mission.points,
-                dropNumber: drop.drop_number,
-                cleared: Boolean(assignment.first_cleared_at),
-                imagePath: mission.image_path ?? null,
-              }
-            })
-            .filter(
-              (mission: MissionRow | null): mission is MissionRow =>
-                mission !== null,
+          if (announcementResult.error) {
+            setAnnouncementError(
+              new Error(announcementResult.error.message),
             )
+          } else {
+            setAnnouncementError(null)
+          }
 
-        freshMissions.sort(
-          (a, b) => a.dropNumber - b.dropNumber,
-        )
+          if (assignmentResult.error) {
+            setMissionError(new Error(assignmentResult.error.message))
+          } else {
+            setMissionError(null)
+          }
 
-        const nextAnnouncements = announcementResult.error
-          ? cached?.announcements ?? []
-          : freshAnnouncements
+          const freshAnnouncements =
+            (announcementResult.data ?? []) as AnnouncementRow[]
 
-        const nextMissions = assignmentResult.error
-          ? cached?.missions ?? []
-          : freshMissions
+          const freshMissions: MissionRow[] =
+            (assignmentResult.data ?? [])
+              .map((assignment: any): MissionRow | null => {
+                const mission = Array.isArray(assignment.mission)
+                  ? assignment.mission[0]
+                  : assignment.mission
 
-        if (!cancelled) {
-          setAnnouncements(nextAnnouncements)
-          setNormalizedMissions(nextMissions)
-        }
+                if (!mission) return null
 
-        const announcementBackgroundPath =
-          eventResult.data?.announcement_background_path ??
-          cached?.announcementBackgroundPath ??
-          ''
+                const drop = Array.isArray(mission.drop)
+                  ? mission.drop[0]
+                  : mission.drop
 
-        writeHomeCache(eventId, participant.id, {
-          savedAt: Date.now(),
-          participantId: participant.id,
-          announcements: nextAnnouncements,
-          missions: nextMissions,
-          announcementBackgroundPath,
-        })
+                if (
+                  !drop ||
+                  drop.event_id !== eventId ||
+                  drop.status !== 'published'
+                ) {
+                  return null
+                }
 
-        void applyAnnouncementBackground(announcementBackgroundPath)
-      } catch (error) {
-        console.error(error)
+                return {
+                  id: mission.id,
+                  title: mission.title,
+                  difficulty: mission.difficulty,
+                  points: mission.points,
+                  dropNumber: drop.drop_number,
+                  cleared: Boolean(assignment.first_cleared_at),
+                  imagePath: mission.image_path ?? null,
+                }
+              })
+              .filter(
+                (mission: MissionRow | null): mission is MissionRow =>
+                  mission !== null,
+              )
 
-        if (!cached && !cancelled) {
-          const normalized =
-            error instanceof Error
-              ? error
-              : new Error('Homeを読み込めませんでした')
-          setAnnouncementError(normalized)
-          setMissionError(normalized)
+          freshMissions.sort(
+            (a, b) => a.dropNumber - b.dropNumber,
+          )
+
+          const nextAnnouncements = announcementResult.error
+            ? cached?.announcements ?? []
+            : freshAnnouncements
+
+          const nextMissions = assignmentResult.error
+            ? cached?.missions ?? []
+            : freshMissions
+
+          if (!cancelled) {
+            setAnnouncements(nextAnnouncements)
+            setNormalizedMissions(nextMissions)
+          }
+
+          const announcementBackgroundPath =
+            eventResult.data?.announcement_background_path ??
+            cached?.announcementBackgroundPath ??
+            ''
+
+          writeHomeCache(eventId, participant.id, {
+            savedAt: Date.now(),
+            participantId: participant.id,
+            announcements: nextAnnouncements,
+            missions: nextMissions,
+            announcementBackgroundPath,
+          })
+
+          void applyAnnouncementBackground(announcementBackgroundPath)
+        } catch (error) {
+          console.error(error)
+
+          if (!cached && !cancelled) {
+            const normalized =
+              error instanceof Error
+                ? error
+                : new Error('Homeを読み込めませんでした')
+            setAnnouncementError(normalized)
+            setMissionError(normalized)
+          }
+        } finally {
+          if (!cancelled) setLoading(false)
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        homeRequestPending = false
       }
     }
 
+    const refreshHome = () => {
+      if (document.visibilityState === 'visible') void loadHome()
+    }
     void loadHome()
+    window.addEventListener('focus', refreshHome)
+    window.addEventListener('online', refreshHome)
+    document.addEventListener('visibilitychange', refreshHome)
 
     return () => {
       cancelled = true
+      window.removeEventListener('focus', refreshHome)
+      window.removeEventListener('online', refreshHome)
+      document.removeEventListener('visibilitychange', refreshHome)
     }
   }, [eventId, supabase])
 
@@ -301,23 +317,42 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false
+    let pending = false
+    let attempts = 0
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    const imagePath = currentMission?.imagePath
+    setMissionImageUrl('/mission-default.jpg')
 
     async function applyMissionImage() {
-      const imagePath = currentMission?.imagePath
-
-      if (!imagePath) {
-        setMissionImageUrl('/mission-default.jpg')
-        return
-      }
-
+      if (cancelled || pending || !imagePath) return
+      pending = true
       const urls = await storageImageUrlMap(supabase, [imagePath])
-      if (!cancelled) setMissionImageUrl(urls.get(imagePath) ?? '/mission-default.jpg')
+      pending = false
+      if (cancelled) return
+      const url = urls.get(imagePath)
+      if (url) setMissionImageUrl(url)
+      else if (++attempts < 3) {
+        retryTimer = setTimeout(() => void applyMissionImage(), attempts * 2000)
+      }
     }
 
+    const retryImage = () => {
+      if (document.visibilityState !== 'visible') return
+      attempts = 0
+      clearTimeout(retryTimer)
+      void applyMissionImage()
+    }
     void applyMissionImage()
+    window.addEventListener('online', retryImage)
+    window.addEventListener('focus', retryImage)
+    document.addEventListener('visibilitychange', retryImage)
 
     return () => {
       cancelled = true
+      clearTimeout(retryTimer)
+      window.removeEventListener('online', retryImage)
+      window.removeEventListener('focus', retryImage)
+      document.removeEventListener('visibilitychange', retryImage)
     }
   }, [currentMission?.id, currentMission?.imagePath, supabase])
 

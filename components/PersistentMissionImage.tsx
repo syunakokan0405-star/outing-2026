@@ -10,7 +10,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { storageImageUrlMap } from '@/lib/storage-image-urls'
 
-const CACHE_NAME = 'outing-mission-images-v1'
+const CACHE_NAME = 'outing-mission-images-v2'
 
 type Props = {
   missionId: string
@@ -75,7 +75,7 @@ export default function PersistentMissionImage({
           return
         }
         const cacheKey = new Request(
-          `${window.location.origin}/__outing-cache/mission/${missionId}`,
+          `${window.location.origin}/__outing-cache/mission/${missionId}/${encodeURIComponent(src)}`,
         )
 
         if ('caches' in window) {

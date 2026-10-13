@@ -1,7 +1,7 @@
 import { backgroundAssetUrl, isBackgroundPath } from '@/lib/background-assets'
 import type { createClient } from '@/lib/supabase/client'
 
-const CACHE_NAME = 'outing-shared-storage-images-v1'
+const CACHE_NAME = 'outing-shared-storage-images-v2'
 const memory = new Map<string, string>()
 const pending = new Map<string, Promise<string | undefined>>()
 // Shared Blob URLs belong to this module. Callers must not revoke them.
@@ -62,7 +62,7 @@ export async function storageImageUrlMap(supabase: ReturnType<typeof createClien
             memory.set(owner.path, url)
             try { await cache?.put(request(owner.path), new Response(blob)) } catch {}
             owner.resolve(url)
-          } catch { owner.resolve(src) }
+          } catch { owner.resolve(undefined) }
         }))
       }
     } catch { console.error('Some storage images could not be loaded.') }
