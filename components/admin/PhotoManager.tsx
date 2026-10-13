@@ -1,4 +1,5 @@
 'use client'
+import PersistentPostImage from '@/components/PersistentPostImage'
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -101,7 +102,7 @@ export default function PhotoManager({ eventId }: { eventId: string }) {
       {posts.length === 0 && <section className="card">この条件の投稿はありません。</section>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap: 16 }}>
         {posts.map(post => <article className="card grid" key={post.id}>
-          {urls[post.id] ? <img src={urls[post.id]} alt={`${post.participant_name}の投稿写真`} loading="lazy" style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'contain', borderRadius: 12 }} /> : <p className="muted">写真を表示できません。</p>}
+          {urls[post.id] ? <PersistentPostImage postId={`admin-photo:${post.id}`} src={urls[post.id]} alt={`${post.participant_name}の投稿写真`} style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'contain', borderRadius: 12 }} /> : <p className="muted">写真を表示できません。</p>}
           <b>{post.participant_name}</b>
           <div style={{ whiteSpace: 'pre-wrap' }}>Mission：{post.mission_title ?? 'お題なし'}</div>
           <div>獲得ポイント：{post.earned_points} PT（投稿者分）</div>

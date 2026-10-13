@@ -2,6 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import PersistentPostImage from '@/components/PersistentPostImage'
+import { r2PostUrlMap } from '@/lib/post-image-urls'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
 import { createClient } from '@/lib/supabase/client'
 
 type Award = {
@@ -13,6 +16,9 @@ type Award = {
 type PostRow = {
   id: string
   image_path: string
+  storage_provider: string
+  r2_object_key: string | null
+  r2_thumbnail_key: string | null
   created_at: string
   comment: string | null
   participant_id: string
@@ -66,6 +72,7 @@ export default function AdminAwardsPage() {
         .select(`
           id,
           image_path,
+          storage_provider,r2_object_key,r2_thumbnail_key,
           created_at,
           comment,
           participant_id,
@@ -124,27 +131,11 @@ export default function AdminAwardsPage() {
       setWinners([])
     }
 
-    const paths = postRows
-      .map((post) => post.image_path)
-      .filter(Boolean)
-
-    if (paths.length > 0) {
-      const { data: signedData } = await supabase.storage
-        .from('outing-photos')
-        .createSignedUrls(paths, 3600)
-
-      const map: Record<string, string> = {}
-
-      signedData?.forEach((item, index) => {
-        if (item.signedUrl) {
-          map[paths[index]] = item.signedUrl
-        }
-      })
-
-      setSignedUrls(map)
-    } else {
-      setSignedUrls({})
-    }
+    const [legacy, r2] = await Promise.all([
+      storageImageUrlMap(supabase, postRows.filter(p => p.storage_provider !== 'r2').map(p => p.image_path)),
+      r2PostUrlMap(postRows, 'thumbnail', false),
+    ])
+    setSignedUrls(Object.fromEntries(postRows.map(p => [p.id, r2.get(p.id) || legacy.get(p.image_path) || ''])))
 
     setLoading(false)
   }
@@ -513,9 +504,10 @@ export default function AdminAwardsPage() {
 
             return (
               <article className="card" key={winner.post_id}>
-                {signedUrls[post.image_path] && (
-                  <img
-                    src={signedUrls[post.image_path]}
+                {signedUrls[post.id] && (
+                  <PersistentPostImage
+                    postId={`award-thumb:${post.id}:${post.r2_thumbnail_key || post.r2_object_key || post.image_path}`}
+                    src={signedUrls[post.id]}
                     alt="受賞作品"
                     style={{
                       width: '100%',
@@ -577,9 +569,10 @@ export default function AdminAwardsPage() {
 
             return (
               <article className="card" key={post.id}>
-                {signedUrls[post.image_path] && (
-                  <img
-                    src={signedUrls[post.image_path]}
+                {signedUrls[post.id] && (
+                  <PersistentPostImage
+                    postId={`award-thumb:${post.id}:${post.r2_thumbnail_key || post.r2_object_key || post.image_path}`}
+                    src={signedUrls[post.id]}
                     alt="投稿写真"
                     style={{
                       width: '100%',

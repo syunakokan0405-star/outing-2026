@@ -1,4 +1,5 @@
 import './globals.css'
+import ImageCacheRegistration from '@/components/ImageCacheRegistration'
 import {
   Cormorant_Garamond,
   Noto_Sans_JP,
@@ -54,7 +55,7 @@ export default function RootLayout({
       lang="ja"
       className={`${cormorant.variable} ${notoSansJP.variable} ${notoSerifJP.variable}`}
     >
-      <body>{children}</body>
+      <body><ImageCacheRegistration />{children}</body>
     </html>
   )
 }

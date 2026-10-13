@@ -3,11 +3,11 @@ const assert = require('node:assert/strict')
 const {readFileSync} = require('node:fs')
 const vm = require('node:vm')
 const ts = require('typescript')
-function setup({loggedIn=true,role='owner',putFails=false}={}) {
+function setup({loggedIn=true,role='owner',putFails=false,canStream=false}={}) {
   let downloads=0, puts=0, updates=0
   const stored=new Set()
   const db={auth:{async getUser(){return {data:{user:loggedIn?{id:'u'}:null}}}},storage:{from(){return {async download(){downloads++;return {data:new Blob(['image'],{type:'image/jpeg'})}}}}},from(table){
-    const q={select(){return q},eq(){return q},not(){return q},update(){updates++;return q},async maybeSingle(){return {data: table==='admin_users'?{id:'a',role,can_manage_guide:false,can_manage_missions:false}:{id:'p'}}},async single(){return {data:{ranking_background_path:'event-backgrounds/event/ranking.jpg'}}},then(resolve){return Promise.resolve({data:table==='missions'?[]:null}).then(resolve)}}
+    const q={select(){return q},eq(){return q},not(){return q},update(){updates++;return q},async maybeSingle(){return {data: table==='admin_users'?{id:'a',role,can_manage_guide:false,can_manage_missions:false,can_manage_stream:canStream}:{id:'p'}}},async single(){return {data:{ranking_background_path:'event-backgrounds/event/ranking.jpg'}}},then(resolve){return Promise.resolve({data:table==='missions'?[]:null}).then(resolve)}}
     return q
   }}
   class Head {constructor(x){Object.assign(this,x);this.op='head'}}
@@ -56,4 +56,11 @@ test('staff cannot migrate or request an upload without the matching permission'
   const b=setup({role:'staff'})
   assert.equal((await b.exports.POST(migrate())).status,403)
   assert.equal(b.downloads,0);assert.equal(b.updates,0)
+})
+
+test('stream uploads require stream permission and use R2 paths',async()=>{
+  const request=()=>new Request('https://outing.test/api/r2/assets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'stream',contentType:'image/jpeg'})})
+  assert.equal((await setup({role:'staff'}).exports.POST(request())).status,403)
+  const allowed=await setup({role:'staff',canStream:true}).exports.POST(request())
+  assert.equal(allowed.status,200);assert.match((await allowed.json()).path,/^r2:assets\/event\/stream\//)
 })

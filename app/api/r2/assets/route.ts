@@ -68,9 +68,9 @@ export async function POST(request: Request) {
     const { db, user, eventId } = context
     const body = await request.json()
     const kind = body.kind
-    if (body.action !== 'migrate' && kind !== 'home' && kind !== 'mission') return NextResponse.json({ error: 'Invalid background kind' }, { status: 400 })
-    const { data: admin } = await db.from('admin_users').select('role,can_manage_missions,can_manage_guide').eq('event_id', eventId).eq('auth_user_id', user.id).maybeSingle()
-    if (!admin || (!['owner', 'admin'].includes(admin.role) && !(kind === 'mission' ? admin.can_manage_missions : admin.can_manage_guide))) {
+    if (body.action !== 'migrate' && kind !== 'home' && kind !== 'mission' && kind !== 'stream') return NextResponse.json({ error: 'Invalid background kind' }, { status: 400 })
+    const { data: admin } = await db.from('admin_users').select('role,can_manage_missions,can_manage_guide,can_manage_stream').eq('event_id', eventId).eq('auth_user_id', user.id).maybeSingle()
+    if (!admin || (!['owner', 'admin'].includes(admin.role) && !(kind === 'mission' ? admin.can_manage_missions : kind === 'stream' ? admin.can_manage_stream : admin.can_manage_guide))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (body.action === 'migrate') {

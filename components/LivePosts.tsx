@@ -16,6 +16,7 @@ import { createPostQueue } from '@/lib/realtime-post-queue'
 import { claimHiddenBonus } from '@/lib/hidden-bonus'
 import { applyReactionChange } from '@/lib/feed-reactions'
 import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
 import { r2PostUrlMap as r2ReadUrlMap } from '@/lib/post-image-urls'
 import PersistentPostImage from '@/components/PersistentPostImage'
 
@@ -92,29 +93,7 @@ async function signedUrlMap(
   supabase: ReturnType<typeof createClient>,
   paths: string[],
 ) {
-  const unique = [...new Set(paths.filter(Boolean))]
-
-  if (!unique.length) {
-    return new Map<string, string>()
-  }
-
-  const { data, error } = await supabase.storage
-    .from('outing-photos')
-    .createSignedUrls(unique, 60 * 60)
-
-  if (error) {
-    return new Map<string, string>()
-  }
-
-  const map = new Map<string, string>()
-
-  ;(data ?? []).forEach((entry, index) => {
-    if (entry.signedUrl) {
-      map.set(unique[index], entry.signedUrl)
-    }
-  })
-
-  return map
+  return storageImageUrlMap(supabase, paths)
 }
 
 export default function LivePosts({

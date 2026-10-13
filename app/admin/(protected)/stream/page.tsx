@@ -8,6 +8,8 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { storageImageUrlMap } from '@/lib/storage-image-urls'
+import { uploadBackgroundAsset } from '@/lib/background-assets'
 import { createClient } from '@/lib/supabase/client'
 
 type AdminContext = {
@@ -90,24 +92,8 @@ export default function AdminStream() {
       return
     }
 
-    const { data: urlData, error: urlError } =
-      await supabase.storage
-        .from('outing-photos')
-        .createSignedUrls(paths, 3600)
-
-    if (urlError) {
-      console.error(urlError)
-    }
-
-    const map: Record<string, string> = {}
-
-    urlData?.forEach((item, index) => {
-      if (item.signedUrl) {
-        map[paths[index]] = item.signedUrl
-      }
-    })
-
-    setSignedUrls(map)
+    const urls = await storageImageUrlMap(supabase, paths)
+    setSignedUrls(Object.fromEntries(urls))
     setLoadingPosts(false)
   }
 
@@ -185,28 +171,8 @@ export default function AdminStream() {
         return
       }
 
-      const ext =
-        (file.name.split('.').pop() || 'jpg')
-          .replace(/[^a-zA-Z0-9]/g, '')
-          .toLowerCase() || 'jpg'
-
-      imagePath =
-        `${admin.event_id}/admin/` +
-        `${crypto.randomUUID()}.${ext}`
-
-      const { error: uploadError } =
-        await supabase.storage
-          .from('outing-photos')
-          .upload(imagePath, file, {
-            contentType: file.type,
-            upsert: false,
-          })
-
-      if (uploadError) {
-        setError(uploadError.message)
-        setSending(false)
-        return
-      }
+      try { imagePath = await uploadBackgroundAsset(file, 'stream') }
+      catch (error) { setError(error instanceof Error ? error.message : '画像をアップロードできませんでした。'); setSending(false); return }
     }
 
     const { error: insertError } = await supabase.rpc(
@@ -220,7 +186,7 @@ export default function AdminStream() {
     )
 
     if (insertError) {
-      if (imagePath) {
+      if (imagePath && !imagePath.startsWith('r2:')) {
         await supabase.storage
           .from('outing-photos')
           .remove([imagePath])
@@ -272,7 +238,7 @@ export default function AdminStream() {
       return
     }
 
-    if (post.image_path) {
+    if (post.image_path && !post.image_path.startsWith('r2:')) {
       const { error: storageError } =
         await supabase.storage
           .from('outing-photos')
