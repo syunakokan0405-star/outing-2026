@@ -84,3 +84,13 @@ PostgreSQL（PGlite）の再現用スキーマで、保存キー検証・初回5
 ## 保留
 
 新しい画像キー方式では過去のR2オブジェクトが残るため、不要画像の削除・保持期間は別途検討する。
+
+
+## 2026-10-14 Stream Latest / Liked
+
+- Latest retains the existing live feed and pagination. Liked lazily loads the top 15 participant stream posts across the event, ordered by hearts descending, then creation time descending and ID. Staff announcements remain in Latest.
+- Liked reuses its per-browser in-memory snapshot for 60 seconds, including empty results. Refresh occurs on entering Liked after expiry; no periodic fetch, extra realtime subscription or pagination is added. Heart changes do not extend the ranking TTL.
+- Both panels remain mounted after the first visit and use the same persistent image keys/signature cache. Hidden Latest pagination is paused.
+- Own heart changes update both panels immediately, with rollback on failure and the RPC result used instead of an extra reaction SELECT. Duplicate in-flight toggles are blocked.
+- get_liked_stream is SECURITY INVOKER and relies on existing posts/reactions RLS; only authenticated callers may execute it. The migration was applied to NIC outing.
+- Verification: 57 tests passed, including ranking across old/new posts, 15-row cap, tie ordering, deleted/Gallery/other-event exclusion, RLS, anonymous denial, and the exact 60-second cache boundary. Live database query confirmed the current eligible result set. TypeScript passed. Build uses placeholder local environment values; actual R2 upload/download and signed-in browser behavior require production verification.

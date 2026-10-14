@@ -9,7 +9,7 @@ import {
   UserRound,
 } from 'lucide-react'
 
-import LivePosts from '@/components/LivePosts'
+import StreamTabs from '@/components/StreamTabs'
 
 export default function Stream() {
   return (
@@ -41,7 +41,7 @@ export default function Stream() {
             paddingBottom: 120,
           }}
         >
-          <LivePosts mode="stream" />
+          <StreamTabs />
         </section>
       </div>
 

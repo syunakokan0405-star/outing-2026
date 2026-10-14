@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 import { getBrowserParticipant } from '@/lib/browser-participant'
 import { createPostQueue } from '@/lib/realtime-post-queue'
 import { claimHiddenBonus } from '@/lib/hidden-bonus'
+import { canReuseLikedStream } from '@/lib/liked-stream-cache'
 import { applyReactionChange } from '@/lib/feed-reactions'
 import { avatarUrlMap, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 import { storageImageUrlMap } from '@/lib/storage-image-urls'
@@ -87,6 +88,22 @@ type LivePostsCacheEntry = {
 }
 
 const livePostsCache = new Map<string, LivePostsCacheEntry>()
+const localHeartEvent = 'outing-local-heart'
+const pendingHearts = new Set<string>()
+type LocalHeartChange = { postId: string; participantId: string; event: 'INSERT' | 'DELETE' }
+function applyLocalHeart(items: FeedItem[], change: LocalHeartChange): FeedItem[] {
+  return items.map(item => {
+    if (item.kind !== 'participant' || item.id !== change.postId) return item
+    const reactions = applyReactionChange(item.reactions ?? [], change.participantId, change.event)!
+    return { ...item, reactions, heartCount: reactions.length }
+  })
+}
+function publishLocalHeart(change: LocalHeartChange) {
+  for (const [key, cached] of livePostsCache) {
+    livePostsCache.set(key, { ...cached, items: applyLocalHeart(cached.items, change) })
+  }
+  window.dispatchEvent(new CustomEvent(localHeartEvent, { detail: change }))
+}
 
 
 async function signedUrlMap(
@@ -99,19 +116,23 @@ async function signedUrlMap(
 export default function LivePosts({
   mode,
   participantId,
+  order = 'latest',
+  active = true,
 }: {
   mode: Mode
   participantId?: string
+  order?: 'latest' | 'liked'
+  active?: boolean
 }) {
   const supabase = useMemo(() => createClient(), [])
-  const cacheKey = `${mode}:${participantId ?? 'self'}`
+  const cacheKey = `${mode}:${participantId ?? 'self'}:${order}`
   const initialCache = livePostsCache.get(cacheKey)
 
   const [items, setItems] = useState<FeedItem[]>(
-    () => initialCache?.items ?? [],
+    () => order === 'liked' ? [] : initialCache?.items ?? [],
   )
   const [loading, setLoading] = useState(
-    () => !initialCache,
+    () => order === 'liked' || !initialCache,
   )
   const [error, setError] = useState('')
   const [currentParticipantId, setCurrentParticipantId] =
@@ -125,6 +146,8 @@ export default function LivePosts({
   const [hasMore, setHasMore] = useState(
     () => initialCache?.hasMore ?? false,
   )
+  const fetchedAt = useRef(initialCache?.savedAt ?? 0)
+  const requestInFlight = useRef(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
@@ -138,6 +161,16 @@ export default function LivePosts({
     const participant = await getBrowserParticipant(supabase).catch(() => null)
     if (!participant) {
       setError('参加者情報を取得できませんでした。')
+      setLoading(false)
+      return
+    }
+
+    if (order === 'liked' && canReuseLikedStream(cached, participant) && cached) {
+      fetchedAt.current = cached.savedAt
+      setItems(cached.items)
+      setCurrentParticipantId(participant.id)
+      setCurrentEventId(participant.event_id)
+      setHasMore(false)
       setLoading(false)
       return
     }
@@ -183,13 +216,25 @@ export default function LivePosts({
       )
     }
 
+    let rankedIds: string[] = []
+    if (mode === 'stream' && order === 'liked') {
+      const { data: ranking, error: rankingError } = await supabase.rpc('get_liked_stream', { p_event_id: participant.event_id })
+      if (rankingError) {
+        setError(rankingError.message)
+        setLoading(false)
+        return
+      }
+      rankedIds = (ranking ?? []).map((row: { post_id: string }) => row.post_id)
+      query = query.in('id', rankedIds).limit(15)
+    }
+
     const [
       { data: postsData, error: postsError },
       adminResult,
     ] = await Promise.all([
-      query,
+      order === 'liked' && !rankedIds.length ? Promise.resolve({ data: [], error: null }) : query,
 
-      mode === 'stream'
+      mode === 'stream' && order === 'latest'
         ? supabase
             .from('stream_posts')
             .select(`
@@ -277,8 +322,13 @@ export default function LivePosts({
         new Date(a.created_at).getTime(),
     )
 
+    if (order === 'liked') {
+      const rank = new Map(rankedIds.map((id, index) => [id, index]))
+      merged.sort((a, b) => (rank.get(a.id) ?? 15) - (rank.get(b.id) ?? 15))
+    }
+    fetchedAt.current = Date.now()
     const nextHasMore =
-      mode === 'stream' && rows.length === 12
+      mode === 'stream' && order === 'latest' && rows.length === 12
 
     livePostsCache.set(cacheKey, {
       items: merged,
@@ -291,10 +341,10 @@ export default function LivePosts({
     setItems(merged)
     setHasMore(nextHasMore)
     setLoading(false)
-  }, [cacheKey, mode, participantId, supabase])
+  }, [cacheKey, mode, order, participantId, supabase])
 
   const loadMore = useCallback(async () => {
-    if (mode !== 'stream' || !currentEventId || !currentParticipantId || loadingMore || !hasMore) return
+    if (mode !== 'stream' || order === 'liked' || !active || !currentEventId || !currentParticipantId || loadingMore || !hasMore) return
 
     const participantItems = items.filter(
       (item): item is UserFeedItem => item.kind === 'participant',
@@ -357,10 +407,10 @@ export default function LivePosts({
     } finally {
       setLoadingMore(false)
     }
-  }, [currentEventId, currentParticipantId, hasMore, items, loadingMore, mode, supabase])
+  }, [currentEventId, currentParticipantId, hasMore, items, loadingMore, mode, order, active, supabase])
 
   useEffect(() => {
-    if (mode !== 'stream' || !hasMore) return
+    if (mode !== 'stream' || order === 'liked' || !active || !hasMore) return
     const target = loadMoreRef.current
     if (!target) return
     const observer = new IntersectionObserver(
@@ -371,7 +421,7 @@ export default function LivePosts({
     )
     observer.observe(target)
     return () => observer.disconnect()
-  }, [hasMore, loadMore, mode])
+  }, [hasMore, loadMore, mode, order, active])
 
   const addRealtimePosts = useCallback(async (postIds: string[]) => {
     if (mode !== 'stream' || !currentEventId || !currentParticipantId || !postIds.length) return
@@ -458,7 +508,7 @@ export default function LivePosts({
       currentParticipantId,
       currentEventId,
       hasMore,
-      savedAt: Date.now(),
+      savedAt: fetchedAt.current,
     })
   }, [
     cacheKey,
@@ -476,6 +526,16 @@ export default function LivePosts({
   }, [load])
 
   useEffect(() => {
+    if (order !== 'liked' || !active || requestInFlight.current) return
+    requestInFlight.current = true
+    void loadRef.current().catch(() => {
+      setError('写真を取得できませんでした。再読み込みしてください。')
+      setLoading(false)
+    }).finally(() => { requestInFlight.current = false })
+  }, [active, order])
+
+  useEffect(() => {
+    if (order === 'liked') return
     let disposed = false
     let timer: ReturnType<typeof setTimeout> | null = null
     let loadingNow = false
@@ -629,29 +689,40 @@ export default function LivePosts({
     }
   }, [
     addRealtimePosts,
+    order,
     mode,
     participantId,
     refreshPostHearts,
     supabase,
   ])
 
-  async function toggleHeart(post: UserFeedItem) {
-    if (post.mine) return
-
-    const { error: heartError } = await supabase.rpc(
-      'toggle_heart',
-      {
-        p_post_id: post.id,
-      },
-    )
-
-    if (heartError) {
-      setError(heartError.message)
-      return
+  useEffect(() => {
+    const onHeart = (event: Event) => {
+      const change = (event as CustomEvent<LocalHeartChange>).detail
+      setItems(current => applyLocalHeart(current, change))
     }
+    window.addEventListener(localHeartEvent, onHeart)
+    return () => window.removeEventListener(localHeartEvent, onHeart)
+  }, [])
 
-    void refreshPostHearts(post.id)
-    void claimHiddenBonus('hearts_15')
+  async function toggleHeart(post: UserFeedItem) {
+    if (post.mine || !currentParticipantId || pendingHearts.has(post.id)) return
+    pendingHearts.add(post.id)
+    const wasLiked = !!post.reactions?.some(row => row.participant_id === currentParticipantId)
+    const change: LocalHeartChange = { postId: post.id, participantId: currentParticipantId, event: wasLiked ? 'DELETE' : 'INSERT' }
+    publishLocalHeart(change)
+    try {
+      const { data, error: heartError } = await supabase.rpc('toggle_heart', { p_post_id: post.id })
+      if (heartError) throw heartError
+      // The RPC returns the committed state, so no extra SELECT is needed.
+      publishLocalHeart({ ...change, event: data ? 'INSERT' : 'DELETE' })
+      void claimHiddenBonus('hearts_15')
+    } catch (heartError) {
+      publishLocalHeart({ ...change, event: wasLiked ? 'INSERT' : 'DELETE' })
+      setError(heartError instanceof Error ? heartError.message : 'ハートを更新できませんでした。')
+    } finally {
+      pendingHearts.delete(post.id)
+    }
   }
 
 async function downloadPhoto(post: UserFeedItem) {
@@ -754,6 +825,7 @@ async function downloadPhoto(post: UserFeedItem) {
     if (editError) {
       setError(editError.message)
     } else {
+      livePostsCache.delete(cacheKey)
       void load()
     }
   }
@@ -792,6 +864,7 @@ async function downloadPhoto(post: UserFeedItem) {
         return
       }
 
+      livePostsCache.delete(cacheKey)
       void load()
       return
     }
@@ -819,6 +892,7 @@ async function downloadPhoto(post: UserFeedItem) {
       )
     }
 
+    livePostsCache.delete(cacheKey)
     void load()
   }
 
@@ -1608,7 +1682,7 @@ async function downloadPhoto(post: UserFeedItem) {
         )
       })}
 
-      {mode === 'stream' && (
+      {mode === 'stream' && order === 'latest' && (
         <div
           ref={loadMoreRef}
           style={{
