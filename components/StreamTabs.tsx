@@ -8,7 +8,7 @@ export default function StreamTabs() {
   const [visitedLiked, setVisitedLiked] = useState(false)
   return (
     <>
-      <div role="tablist" aria-label="ストリームの並び順" style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+      <div role="tablist" aria-label="ストリームの並び順" style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         {(['latest', 'liked'] as const).map(value => (
           <button key={value} id={`stream-tab-${value}`} type="button" role="tab"
             tabIndex={tab === value ? 0 : -1}
@@ -22,10 +22,13 @@ export default function StreamTabs() {
             }}
             aria-selected={tab === value} aria-controls={`stream-panel-${value}`}
             onClick={() => { setTab(value); if (value === 'liked') setVisitedLiked(true) }}
-            className="uiGhostButton"
-            style={{ flex: 1, color: tab === value ? '#fff' : 'rgba(255,255,255,.5)',
-              background: tab === value ? 'rgba(139,92,246,.24)' : 'rgba(255,255,255,.04)',
-              borderColor: tab === value ? 'rgba(167,139,250,.5)' : 'rgba(255,255,255,.1)' }}>
+            className="outingSerifEn"
+            style={{ flex: 1, minHeight: 32, padding: '7px 8px', borderRadius: 7,
+              fontSize: 11, fontWeight: 500, letterSpacing: '.13em', lineHeight: 1.4,
+              cursor: 'pointer', border: '1px solid',
+              color: tab === value ? '#fff' : 'rgba(255,255,255,.42)',
+              background: tab === value ? 'rgba(113,72,215,.48)' : 'rgba(255,255,255,.04)',
+              borderColor: tab === value ? 'rgba(182,155,255,.3)' : 'rgba(255,255,255,.1)' }}>
             {value === 'latest' ? 'Latest' : 'Liked'}
           </button>
         ))}
