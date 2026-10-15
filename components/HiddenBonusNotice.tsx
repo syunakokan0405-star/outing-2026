@@ -8,10 +8,12 @@ export default function HiddenBonusNotice() {
     return () => window.removeEventListener('outing:hidden-bonus', onAward)
   }, [])
   if (!points) return null
-  return <div role="dialog" aria-modal="true" aria-label="隠しポイント獲得" style={{position:'fixed',inset:0,zIndex:10000,display:'grid',placeItems:'center',background:'rgba(0,0,0,.65)'}} onClick={() => setPoints(0)}>
-    <div className="glassCardStrong" style={{padding:32,textAlign:'center',color:'#fff',maxWidth:320}} onClick={e => e.stopPropagation()}>
-      <p>隠しポイント発見！</p><strong style={{fontSize:36}}>+{points} PT</strong>
-      <p><button type="button" style={{border:'1px solid rgba(255,255,255,.2)',borderRadius:999,padding:'10px 28px',background:'rgba(128,84,220,.3)',color:'#fff',cursor:'pointer'}} onClick={() => setPoints(0)}>閉じる</button></p>
+  return <div role="dialog" aria-modal="true" aria-labelledby="hidden-bonus-title" className="hiddenBonusOverlay" onClick={() => setPoints(0)} onKeyDown={event => { if (event.key === 'Escape') setPoints(0) }}>
+    <div className="glassCardStrong hiddenBonusCard" onClick={event => event.stopPropagation()}>
+      <p className="outingSerifEn hiddenBonusEyebrow">HIDDEN BONUS</p>
+      <h2 id="hidden-bonus-title" className="outingSerifJa hiddenBonusTitle">隠しポイント発見</h2>
+      <p className="outingSerifEn hiddenBonusPoints">+{points}<span>PT</span></p>
+      <button autoFocus type="button" className="outingSans hiddenBonusClose" onClick={() => setPoints(0)}>閉じる</button>
     </div>
   </div>
 }

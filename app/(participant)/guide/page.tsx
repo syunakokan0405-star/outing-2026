@@ -154,7 +154,7 @@ export default function GuidePage() {
 
   return (
     <main
-      className="participantUi"
+      className="participantUi guidePage"
       style={
         {
           '--participant-bg-image': 'url("/outing-bg.jpg")',
@@ -376,6 +376,7 @@ export default function GuidePage() {
                                 style={{
                                   margin: '7px 0 0',
                                   whiteSpace: 'pre-wrap',
+                                  overflowWrap: 'anywhere',
                                   color: 'rgba(255,255,255,.62)',
                                   fontSize: 13,
                                   lineHeight: 1.85,
