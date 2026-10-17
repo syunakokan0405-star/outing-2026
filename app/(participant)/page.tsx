@@ -638,7 +638,7 @@ return (
               </p>
             </div>
           ) : currentMission ? (
-            <article className="photoCard">
+            <article className="photoCard homeMissionCard">
               <img
                 src={missionImageUrl}
                 alt=""
@@ -658,7 +658,7 @@ return (
 
                     gap: 12,
 
-                    marginBottom: 10,
+                    marginBottom: 5,
                   }}
                 >
                   <span
@@ -710,11 +710,11 @@ return (
 
                     color: '#fff',
 
-                    fontSize: 21,
+                    fontSize: 20,
                     fontWeight: 400,
                     letterSpacing: '.015em',
 
-                    lineHeight: 1.45,
+                    lineHeight: 1.33,
                   }}
                 >
                   {
@@ -732,7 +732,7 @@ return (
 
                     gap: 8,
 
-                    marginTop: 10,
+                    marginTop: 6,
 
                     color:
                       'rgba(255,255,255,.72)',
@@ -779,7 +779,7 @@ return (
                   href="/missions"
                   className="outingSans"
                   style={{
-                    marginTop: 17,
+                    marginTop: 12,
                     alignSelf: 'flex-start',
                     display: 'inline-flex',
                     alignItems: 'center',

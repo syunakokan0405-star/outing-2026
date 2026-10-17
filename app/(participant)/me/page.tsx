@@ -115,7 +115,7 @@ type MeCache = {
 
 let meCache: MeCache | null = null
 
-const ME_CACHE_KEY = 'outing-me-cache-v1'
+const ME_CACHE_KEY = 'outing-me-cache-v2'
 
 function readPersistentMeCache(): MeCache | null {
   if (typeof window === 'undefined') return null
@@ -793,8 +793,10 @@ export default function Me() {
                   display: 'block',
                   marginTop: 7,
                   color: '#fff',
-                  fontSize: 28,
-                  lineHeight: 1,
+                  fontSize: 25,
+                  lineHeight: 1.1,
+                  fontWeight: 400,
+                  letterSpacing: '.015em',
                 }}
               >
                 {score}
@@ -851,8 +853,10 @@ export default function Me() {
                   display: 'block',
                   marginTop: 7,
                   color: '#fff',
-                  fontSize: 28,
-                  lineHeight: 1,
+                  fontSize: 25,
+                  lineHeight: 1.1,
+                  fontWeight: 400,
+                  letterSpacing: '.015em',
                 }}
               >
                 {connections}
@@ -933,8 +937,8 @@ export default function Me() {
                 style={{
                   marginTop: 5,
                   color: '#fff',
-                  fontSize: 17,
-                  fontWeight: 750,
+                  fontSize: 18,
+                  fontWeight: 400,
                 }}
               >
                 {rank
