@@ -184,6 +184,7 @@ export default async function Admin() {
   ]
 
   const actions = [
+    { href: '/admin/slideshow', title: 'Slideshow', description: 'プロジェクター上映・キャッシュ・オフライン保存', icon: Image },
     { href: '/admin/points', title: 'Points', description: 'ポイントの加算・減算と調整履歴', icon: Coins },
     {
       href: '/admin/missions',
