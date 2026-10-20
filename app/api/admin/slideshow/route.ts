@@ -56,7 +56,7 @@ export async function GET() {
     const { createClient } = await import('@/lib/supabase/server')
     const client = await createClient()
     const { data: liked } = await client.rpc('get_liked_stream', { p_event_id: eventId })
-    const heartCounts = new Map((liked ?? []).map((r: { post_id: string; heart_count: number }) =>
+    const heartCounts = new Map<string, number>((liked ?? []).map((r: { post_id: string; heart_count: number }): [string, number] =>
       [r.post_id, Number(r.heart_count)]))
     for (const p of posts) p.hearts = heartCounts.get(p.id) ?? 0
     return NextResponse.json({ posts, fetchedAt: new Date().toISOString(), truncated: rows.length >= 3000 },
