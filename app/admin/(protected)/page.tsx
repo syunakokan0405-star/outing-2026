@@ -1,3 +1,4 @@
+import RankingVisibilityControl from '@/components/RankingVisibilityControl'
 import Link from 'next/link'
 import {
   Bell,
@@ -355,6 +356,8 @@ export default async function Admin() {
             <AdminLogout />
           </div>
         </header>
+
+        <RankingVisibilityControl />
 
         {/* OVERVIEW */}
         <section

@@ -4,6 +4,7 @@ import { claimHiddenBonus } from '@/lib/hidden-bonus'
 import ParticipantHeader from '@/components/ParticipantHeader'
 
 import Link from 'next/link'
+import { useRankingVisibility } from '@/lib/use-ranking-visibility'
 import { avatarUrlMap, writeCachedAvatar, PROFILE_UPDATED_EVENT } from '@/lib/avatar-urls'
 import Cropper, { Area } from 'react-easy-crop'
 import {
@@ -205,6 +206,7 @@ export default function Me() {
   const [connectionsLoading, setConnectionsLoading] =
     useState(false)
 
+  const rankingSecret = useRankingVisibility(process.env.NEXT_PUBLIC_EVENT_ID)
   const [rank, setRank] =
     useState<number | null>(
       () => meCache?.rank ?? null,
@@ -353,6 +355,18 @@ export default function Me() {
     rank,
     score,
   ])
+
+  useEffect(() => {
+    if (rankingSecret === null || !eventId) return
+    let disposed = false
+    void supabase.rpc('get_my_rank', { p_event_id: eventId }).then(({ data, error }) => {
+      if (!disposed && !error && data?.[0]) {
+        setScore(Number(data[0].score ?? 0))
+        setRank(data[0].rank == null ? null : Number(data[0].rank))
+      }
+    })
+    return () => { disposed = true }
+  }, [supabase, eventId, rankingSecret])
 
   useEffect(() => {
     const refreshScore = async () => {
@@ -941,7 +955,7 @@ export default function Me() {
                   fontWeight: 400,
                 }}
               >
-                {rank
+                {rankingSecret !== false ? (rankingSecret ? 'SECRET' : '…') : rank
                   ? `${rank}位`
                   : '集計中'}
 

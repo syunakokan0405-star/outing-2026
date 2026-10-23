@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRankingVisibility } from '@/lib/use-ranking-visibility'
 import { Trophy } from 'lucide-react'
 import { getEventBackgrounds, invalidateEventBackgrounds } from '@/lib/event-backgrounds'
 import { createClient } from '@/lib/supabase/client'
@@ -65,6 +66,7 @@ function writeCache(
 }
 
 export default function PointTop5() {
+  const secret = useRankingVisibility(process.env.NEXT_PUBLIC_EVENT_ID)
   const supabase = useMemo(() => createClient(), [])
   const backgroundPathRef = useRef<string | null>(null)
   const [rows, setRows] = useState<RankRow[]>([])
@@ -307,7 +309,11 @@ backgroundImage: `linear-gradient(
           />
         </div>
 
-        {loading && (
+        {secret !== false && <div style={{ padding: '40px 0', textAlign: 'center' }}>
+          <div style={{ fontSize: 20, fontWeight: 400, letterSpacing: '.18em' }}>{secret ? 'SECRET' : '…'}</div>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,.6)' }}>{secret ? 'ランキングは表彰で発表します。' : '公開設定を確認中…'}</p>
+        </div>}
+        {secret === false && loading && (
           <p
             style={{
               margin: 0,
@@ -319,7 +325,7 @@ backgroundImage: `linear-gradient(
           </p>
         )}
 
-        {!loading && error && (
+        {secret === false && !loading && error && (
           <p
             style={{
               margin: 0,
@@ -331,7 +337,7 @@ backgroundImage: `linear-gradient(
           </p>
         )}
 
-        {!loading && !error && !rows.length && (
+        {secret === false && !loading && !error && !rows.length && (
           <p
             style={{
               margin: 0,
@@ -343,7 +349,7 @@ backgroundImage: `linear-gradient(
           </p>
         )}
 
-        {!loading && !error && !!rows.length && (
+        {secret === false && !loading && !error && !!rows.length && (
           <div
             style={{
               display: 'grid',

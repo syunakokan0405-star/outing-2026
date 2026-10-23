@@ -64,6 +64,10 @@ export async function POST(request: Request) {
       );
     }
 
+    const { data: game, error: gameError } = await supabase.from('events').select('game_closed_at').eq('id', eventId).single();
+    if (gameError || !game) return NextResponse.json({ error: '受付状況を確認できませんでした。' }, { status: 503 });
+    if (game.game_closed_at) return NextResponse.json({ error: '投稿受付は終了しました。得点は確定しています。' }, { status: 409 });
+
     // clientRequestId固定なので、オフライン再送でも同じキーになる
     const baseKey =
       `posts/${eventId}/${participantId}/${clientRequestId}`;

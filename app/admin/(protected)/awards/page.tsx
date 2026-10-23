@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import RankingVisibilityControl from '@/components/RankingVisibilityControl'
 import { useEffect, useMemo, useState } from 'react'
 import PersistentPostImage from '@/components/PersistentPostImage'
 import { r2PostUrlMap } from '@/lib/post-image-urls'
@@ -350,6 +351,8 @@ export default function AdminAwardsPage() {
           Awardの作成・編集と、投稿写真から受賞作品の選定ができます。
         </p>
       </div>
+
+      <RankingVisibilityControl />
 
       {error && (
         <section className="card">

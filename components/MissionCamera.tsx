@@ -9,6 +9,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useGameState } from "@/lib/use-ranking-visibility";
 import { submitPostReliably } from "@/lib/post-submit";
 
 type FacingMode = "user" | "environment";
@@ -41,6 +42,7 @@ function formatBytes(bytes: number) {
 }
 
 export default function MissionCamera() {
+  const game = useGameState(process.env.NEXT_PUBLIC_EVENT_ID);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -561,6 +563,7 @@ if (drop) {
   }
 
   async function submitPost() {
+    if (game?.closed) return;
     if (!capture) return;
 
     const params = new URLSearchParams(
@@ -659,6 +662,14 @@ if (drop) {
       setPosting(false);
     }
   }
+
+  useEffect(() => { if (game?.closed) stopCamera(); }, [game?.closed, stopCamera]);
+
+  if (game?.closed) return <main className="participantUi" style={{ minHeight: '100dvh', padding: '100px 24px', background: '#050509', color: '#fff', textAlign: 'center' }}>
+    <h1 style={{ fontSize: 22, fontWeight: 400 }}>投稿受付は終了しました</h1>
+    <p>得点は確定しています。表彰をお楽しみに。</p>
+    <a href="/stream" style={{ color: '#c4b5fd' }}>ストリームを見る</a>
+  </main>;
 
   return (
     <main
