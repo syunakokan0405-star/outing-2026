@@ -1448,54 +1448,6 @@ async function downloadPhoto(post: UserFeedItem) {
                 </div>
               )}
 
-              {post.missions && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 12,
-                    right: 12,
-                    bottom: 12,
-                    display: 'flex',
-                    justifyContent:
-                      'space-between',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '9px 11px',
-                    borderRadius: 13,
-                    background:
-                      'rgba(10,10,14,.68)',
-                    border:
-                      '1px solid rgba(255,255,255,.10)',
-                    backdropFilter:
-                      'blur(12px)',
-                  }}
-                >
-                  <span
-                className="outingSerifJa"
-                style={{
-                      overflow: 'hidden',
-                      textOverflow:
-                        'ellipsis',
-                      whiteSpace: 'nowrap',
-                      color: '#fff',
-                      fontSize: 11,
-                      fontWeight: 650,
-                    }}
-                  >
-                    {post.missions.title}
-                  </span>
-
-                  <strong
-                    style={{
-                      flexShrink: 0,
-                      color: '#c4b5fd',
-                      fontSize: 11,
-                    }}
-                  >
-                    +{post.missions.points} PT
-                  </strong>
-                </div>
-              )}
             </div>
 
          {/* 投稿情報 */}
@@ -1508,6 +1460,46 @@ async function downloadPhoto(post: UserFeedItem) {
     WebkitBackdropFilter: 'blur(16px)',
   }}
 >
+  {/* お題は写真と重ならないよう、下の情報エリアに表示 */}
+  {post.missions && (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 8,
+        padding: '9px 11px',
+        borderRadius: 11,
+        background: 'rgba(255,255,255,.055)',
+        border: '1px solid rgba(255,255,255,.08)',
+      }}
+    >
+      <span
+        className="outingSerifJa"
+        style={{
+          minWidth: 0,
+          overflowWrap: 'anywhere',
+          color: '#fff',
+          fontSize: 11,
+          fontWeight: 650,
+          lineHeight: 1.5,
+        }}
+      >
+        {post.missions.title}
+      </span>
+      <strong
+        style={{
+          flexShrink: 0,
+          color: '#c4b5fd',
+          fontSize: 11,
+        }}
+      >
+        +{post.missions.points} PT
+      </strong>
+    </div>
+  )}
+
   {/* アクション */}
   <div
     style={{
