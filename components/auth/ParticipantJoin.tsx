@@ -107,10 +107,12 @@ export default function ParticipantJoin({
     }
   }, [eventId, supabase])
 
+  // Ignore spaces between family and given names in either input.
+  const normalizeName = (value: string) =>
+    value.normalize('NFKC').replace(/\s+/gu, '').toLowerCase()
+  const normalizedQuery = normalizeName(query)
   const filtered = choices.filter((participant) =>
-    participant.participant_name
-      .toLowerCase()
-      .includes(query.trim().toLowerCase()),
+    normalizeName(participant.participant_name).includes(normalizedQuery),
   )
 
   async function submit(event: FormEvent) {
