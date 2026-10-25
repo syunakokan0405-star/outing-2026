@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Download, Maximize, Pause, Play, RefreshCw, RotateCcw, RotateCw, ShieldCheck } from 'lucide-react'
 import { makeSlideshowZip, type OfflineSlide } from '@/lib/slideshow-offline'
+import ContainedSlideshowImage from '@/components/admin/ContainedSlideshowImage'
 
 type Slide = {
   id: string
@@ -314,30 +315,41 @@ export default function SlideshowManager() {
     <div ref={rootRef} className="outingSans" style={{ background: '#080b10', minHeight: '100vh', color: 'white' }}>
       {viewer ? (
         <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: '#020304', overflow: 'hidden' }}>
-          {currentSrc ? (
-            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-              {/* Soft backdrop fills the side bars of portrait photos without cropping the original. */}
-              <img src={currentSrc} alt="" aria-hidden="true" style={{
-                position: 'absolute', inset: '-12%', width: '124%', height: '124%', objectFit: 'cover',
-                filter: 'blur(54px) brightness(.24)', transform: 'scale(1.08)', pointerEvents: 'none',
-              }} />
-              <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                <img key={current?.id + ':' + current?.rotation} src={currentSrc} alt={current?.mission ?? 'Outing photo'}
-                  style={{
-                    width: current?.rotation % 180 === 0 ? '100%' : '100vh',
-                    height: current?.rotation % 180 === 0 ? '100%' : '100vw',
-                    maxWidth: 'none', maxHeight: 'none', objectFit: 'contain',
-                    display: 'block', transform: 'rotate(' + (current?.rotation ?? 0) + 'deg)',
-                    animation: 'outingSlideFade .65s ease',
-                  }} />
+          <div style={{
+            position: 'absolute',
+            top: 66,
+            bottom: 108,
+            left: 0,
+            right: 0,
+            overflow: 'hidden',
+            background: '#020304',
+          }}>
+            {currentSrc ? (
+              <ContainedSlideshowImage
+                key={current?.id}
+                src={currentSrc}
+                rotation={current?.rotation ?? 0}
+                alt={current?.mission ?? 'Outing photo'}
+              />
+            ) : (
+              <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#888' }}>
+                高画質画像を読み込み中…
               </div>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#888' }}>高画質画像を読み込み中…</div>
-          )}
+            )}
+          </div>
           <div style={{ position: 'absolute', top: 26, left: '4%', fontSize: 13, letterSpacing: '.24em', textShadow: '0 1px 8px #000' }}>OUTING 2026</div>
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, pointerEvents: 'none',
-            padding: '90px 4% 35px', background: 'linear-gradient(transparent,rgba(0,0,0,.85))' }}>
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 108,
+            boxSizing: 'border-box',
+            pointerEvents: 'none',
+            padding: '16px 4% 30px',
+            background: '#020304',
+            overflow: 'hidden',
+          }}>
             <div style={{ fontSize: 'clamp(24px,3.4vw,52px)', fontWeight: 300 }}>{current?.participant}</div>
             <div style={{ opacity: .8, fontSize: 'clamp(13px,1.5vw,23px)', marginTop: 6 }}>{current?.mission}</div>
           </div>
@@ -349,7 +361,7 @@ export default function SlideshowManager() {
             <button style={button} onClick={() => move(1)} title="次の写真"><ArrowRight size={18} /></button>
             <button style={button} onClick={stop}>EXIT</button>
           </div>
-          <div style={{ position: 'absolute', bottom: 16, right: 22, fontSize: 11, opacity: .6 }}>
+          <div style={{ position: 'absolute', bottom: 14, right: 22, fontSize: 11, opacity: .6 }}>
             {(activeIndex < 0 ? 0 : activeIndex) + 1} / {visible.length} · {playing ? 'LIVE' : 'PAUSED'}
             {error ? ' · 接続確認中（キャッシュ再生）' : ''}
           </div>
