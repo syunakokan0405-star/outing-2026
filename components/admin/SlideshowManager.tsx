@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Download, Maximize, Pause, Play, RefreshCw, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Download, Maximize, Pause, Play, RefreshCw, RotateCcw, RotateCw, ShieldCheck } from 'lucide-react'
 import { makeSlideshowZip, type OfflineSlide } from '@/lib/slideshow-offline'
 
 type Slide = {
@@ -12,6 +12,7 @@ type Slide = {
   createdAt: string
   hearts: number
   hidden: boolean
+  rotation: number
 }
 type Order = 'random' | 'latest' | 'liked'
 
@@ -51,6 +52,7 @@ export default function SlideshowManager() {
   const [exportProgress, setExportProgress] = useState<number | null>(null)
   const [syncTime, setSyncTime] = useState('')
   const [busyPostId, setBusyPostId] = useState('')
+  const [busyRotationId, setBusyRotationId] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const memory = useRef(new Map<string, string>())
   const pending = useRef(new Set<string>())
@@ -192,17 +194,41 @@ export default function SlideshowManager() {
     return () => window.clearInterval(timer)
   }, [viewer, playing, visible.length, intervalSeconds, move])
 
+  // Rotation is metadata only. The original WebP and its cached bytes stay unchanged.
+  const rotatePost = useCallback(async (post: Slide, direction: -90 | 90) => {
+    if (busyRotationId) return
+    const rotation = ((post.rotation + direction + 360) % 360)
+    setBusyRotationId(post.id)
+    try {
+      const response = await fetch('/api/admin/slideshow', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: post.id, rotation }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error ?? '向きを保存できませんでした。')
+      setPosts(current => current.map(p => p.id === post.id ? { ...p, rotation } : p))
+      setNotice('写真の向きを保存しました。次回の上映やオフライン保存にも反映されます。')
+      setError('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '向きを保存できませんでした。')
+    } finally { setBusyRotationId('') }
+  }, [busyRotationId])
+
   useEffect(() => {
     if (!viewer) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') { e.preventDefault(); move(1) }
       if (e.key === 'ArrowLeft') { e.preventDefault(); move(-1) }
       if (e.key === ' ') { e.preventDefault(); setPlaying(value => !value) }
+      if (e.key.toLowerCase() === 'r' && current) {
+        e.preventDefault()
+        void rotatePost(current, e.shiftKey ? -90 : 90)
+      }
       if (e.key === 'Escape') setViewer(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [viewer, move])
+  }, [viewer, move, current, rotatePost])
 
   const start = () => {
     if (!visible.length) return
@@ -261,7 +287,7 @@ export default function SlideshowManager() {
           }
           if (!blob) throw new Error(post.participant + ' の画像を保存できませんでした。')
           files.push({ id: post.id, participant: post.participant, mission: post.mission,
-            createdAt: post.createdAt, hearts: post.hearts, blob })
+            createdAt: post.createdAt, hearts: post.hearts, rotation: post.rotation, blob })
         }
         setExportProgress(Math.round(100 * Math.min(visible.length, i + batch.length) / visible.length))
       }
@@ -289,8 +315,23 @@ export default function SlideshowManager() {
       {viewer ? (
         <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: '#020304', overflow: 'hidden' }}>
           {currentSrc ? (
-            <img key={current?.id} src={currentSrc} alt={current?.mission ?? 'Outing photo'}
-              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', animation: 'outingSlideFade .65s ease' }} />
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+              {/* Soft backdrop fills the side bars of portrait photos without cropping the original. */}
+              <img src={currentSrc} alt="" aria-hidden="true" style={{
+                position: 'absolute', inset: '-12%', width: '124%', height: '124%', objectFit: 'cover',
+                filter: 'blur(54px) brightness(.24)', transform: 'scale(1.08)', pointerEvents: 'none',
+              }} />
+              <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                <img key={current?.id + ':' + current?.rotation} src={currentSrc} alt={current?.mission ?? 'Outing photo'}
+                  style={{
+                    width: current?.rotation % 180 === 0 ? '100%' : '100vh',
+                    height: current?.rotation % 180 === 0 ? '100%' : '100vw',
+                    maxWidth: 'none', maxHeight: 'none', objectFit: 'contain',
+                    display: 'block', transform: 'rotate(' + (current?.rotation ?? 0) + 'deg)',
+                    animation: 'outingSlideFade .65s ease',
+                  }} />
+              </div>
+            </div>
           ) : (
             <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#888' }}>高画質画像を読み込み中…</div>
           )}
@@ -302,6 +343,8 @@ export default function SlideshowManager() {
           </div>
           <div style={{ position: 'absolute', top: 18, right: 22, display: 'flex', alignItems: 'center', gap: 8 }}>
             <button style={button} onClick={() => move(-1)} title="前の写真"><ArrowLeft size={18} /></button>
+            <button style={button} disabled={!current || !!busyRotationId} onClick={() => { if (current) void rotatePost(current, -90) }} title="左へ90度回転・保存"><RotateCcw size={18} /></button>
+            <button style={button} disabled={!current || !!busyRotationId} onClick={() => { if (current) void rotatePost(current, 90) }} title="右へ90度回転・保存"><RotateCw size={18} /></button>
             <button style={button} onClick={() => setPlaying(v => !v)} title={playing ? '一時停止' : '再開'}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
             <button style={button} onClick={() => move(1)} title="次の写真"><ArrowRight size={18} /></button>
             <button style={button} onClick={stop}>EXIT</button>
@@ -367,8 +410,9 @@ export default function SlideshowManager() {
           <section style={{ marginTop: 30 }}>
             <h2 style={{ fontWeight: 400, fontSize: 20 }}>DISPLAY CONTROL</h2>
             <p style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#aaa', fontSize: 12 }}>
-              <ShieldCheck size={16} />「投稿テスト　自由！」はミッションIDで常時除外。ここで個別非表示にしても投稿やポイントは変わりません。
+              <ShieldCheck size={16} />「投稿テスト　自由！」は常時除外。投稿やポイントは変更しません。
             </p>
+            <p style={{ color: '#aaa', fontSize: 12 }}>縦・横写真は自動で画面に収めます。横向きが縦に倒れている写真は PREVIEW で確認し、回転ボタンで修正できます。上映中は R / Shift+R キーでも回転できます。</p>
             <input type="search" placeholder="名前・ミッションで検索" value={query} onChange={e => setQuery(e.target.value)}
               style={{ ...button, width: '100%', maxWidth: 400, boxSizing: 'border-box', margin: '12px 0 20px' }} />
             <div style={{ display: 'grid', gap: 8 }}>
@@ -379,9 +423,14 @@ export default function SlideshowManager() {
                     <div style={{ fontSize: 14 }}>{post.participant} <span style={{ color: '#888', fontSize: 11, marginLeft: 6 }}>{post.hearts ? '♥ ' + post.hearts : ''}</span></div>
                     <div style={{ fontSize: 12, color: '#999', marginTop: 5 }}>{post.mission || 'Mission'}</div>
                   </div>
-                  <button style={button} disabled={!!busyPostId} onClick={() => { void setHidden(post) }}>
-                    {busyPostId === post.id ? 'SAVING…' : post.hidden ? 'SHOW' : 'HIDE'}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {!post.hidden && <button style={button} onClick={() => { setActiveId(post.id); start() }} title="この写真から上映を開始">PREVIEW</button>}
+                    <button style={button} disabled={!!busyRotationId} onClick={() => { void rotatePost(post, -90) }} title="左へ90度回転"><RotateCcw size={17} /></button>
+                    <button style={button} disabled={!!busyRotationId} onClick={() => { void rotatePost(post, 90) }} title="右へ90度回転"><RotateCw size={17} /></button>
+                    <button style={button} disabled={!!busyPostId} onClick={() => { void setHidden(post) }}>
+                      {busyPostId === post.id ? 'SAVING…' : post.hidden ? 'SHOW' : 'HIDE'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

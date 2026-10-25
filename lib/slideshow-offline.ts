@@ -4,6 +4,7 @@ export type OfflineSlide = {
   mission: string
   createdAt: string
   hearts: number
+  rotation: number
   blob: Blob
 }
 
@@ -20,19 +21,21 @@ export async function makeSlideshowZip(items: OfflineSlide[], seconds: number): 
   }))
   const json = JSON.stringify(slides).replace(/</g, '\\u003c').replace(/\u2028|\u2029/g, '')
   const css = 'html,body{margin:0;background:#050608;color:white;font-family:Arial,sans-serif;height:100%;overflow:hidden}' +
-    'img{display:block;width:100%;height:100%;object-fit:contain;animation:fade .6s ease}' +
-    '#stage{position:absolute;inset:0 0 0 0}#caption{position:absolute;bottom:0;left:0;right:0;padding:70px 4vw 32px;background:linear-gradient(transparent,rgba(0,0,0,.82))}' +
+    '#stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}' +
+    '#photo{display:block;width:100%;height:100%;max-width:none;max-height:none;flex:0 0 auto;object-fit:contain;animation:fade .6s ease}' +
+    '#backdrop{position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(54px) brightness(.24);transform:scale(1.08)}' +
+    '#caption{position:absolute;bottom:0;left:0;right:0;padding:70px 4vw 32px;background:linear-gradient(transparent,rgba(0,0,0,.82))}' +
     '#who{font-size:clamp(22px,3vw,46px);font-weight:300}#mission{color:#ccc;margin-top:8px;font-size:clamp(13px,1.6vw,24px)}' +
     '#logo{position:absolute;top:26px;left:4vw;letter-spacing:.28em;font-size:12px;color:#eee}' +
     '#hint{position:absolute;top:24px;right:4vw;font-size:12px;color:#aaa}' +
     '@keyframes fade{from{opacity:0}to{opacity:1}}'
   const html = '<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>Outing 2026 Offline Slideshow</title><style>' + css + '</style></head><body>' +
-    '<div id="stage"><img id="photo" alt="Outing photo"></div><div id="logo">OUTING 2026</div><div id="hint">Space: Pause / ← →: Move / F11: Fullscreen</div>' +
+    '<div id="stage"><img id="backdrop" alt="" aria-hidden="true"><img id="photo" alt="Outing photo"></div><div id="logo">OUTING 2026</div><div id="hint">Space: Pause / ← →: Move / R: Rotate / F11: Fullscreen</div>' +
     '<div id="caption"><div id="who"></div><div id="mission"></div></div>' +
-    '<script>const slides=' + json + ';let index=0;let playing=true;const photo=document.getElementById("photo"),who=document.getElementById("who"),mission=document.getElementById("mission");' +
-    'function show(){if(!slides.length){who.textContent="No photos";return;}const p=slides[index];photo.src=p.src;photo.style.animation="none";void photo.offsetWidth;photo.style.animation="fade .6s ease";who.textContent=p.participant;mission.textContent=p.mission;}' +
-    'function move(d){index=(index+d+slides.length)%slides.length;show();}document.addEventListener("keydown",e=>{if(e.key===" "){e.preventDefault();playing=!playing;}else if(e.key==="ArrowRight"){move(1);}else if(e.key==="ArrowLeft"){move(-1);}});' +
+    '<script>const slides=' + json + ';let index=0;let playing=true;const photo=document.getElementById("photo"),backdrop=document.getElementById("backdrop"),who=document.getElementById("who"),mission=document.getElementById("mission");' +
+    'function show(){if(!slides.length){who.textContent="No photos";return;}const p=slides[index];const rot=p.rotation||0;photo.src=p.src;backdrop.src=p.src;photo.style.width=rot%180===0?"100%":"100vh";photo.style.height=rot%180===0?"100%":"100vw";photo.style.transform="rotate("+rot+"deg)";photo.style.animation="none";void photo.offsetWidth;photo.style.animation="fade .6s ease";who.textContent=p.participant;mission.textContent=p.mission;}' +
+    'function move(d){index=(index+d+slides.length)%slides.length;show();}document.addEventListener("keydown",e=>{if(e.key===" "){e.preventDefault();playing=!playing;}else if(e.key==="ArrowRight"){move(1);}else if(e.key==="ArrowLeft"){move(-1);}else if(e.key.toLowerCase()==="r"&&slides.length){slides[index].rotation=((slides[index].rotation||0)+(e.shiftKey?-90:90)+360)%360;show();}});' +
     'setInterval(()=>{if(playing&&slides.length>1)move(1)},' + (Math.max(3, Math.min(20, seconds)) * 1000) + ');show();</script></body></html>'
   files.unshift({ name: 'index.html', blob: new Blob([html], { type: 'text/html;charset=utf-8' }) })
   const manifest = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), slides }, null, 2)

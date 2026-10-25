@@ -41,6 +41,10 @@ export async function GET() {
     const { data: hidden, error: hiddenError } = await db.from('slideshow_hidden_posts')
       .select('post_id').eq('event_id', eventId)
     if (hiddenError) throw hiddenError
+    const { data: rotations, error: rotationsError } = await db.from('slideshow_rotation_overrides')
+      .select('post_id,rotation_degrees').eq('event_id', eventId)
+    if (rotationsError) throw rotationsError
+    const rotationByPost = new Map((rotations ?? []).map(row => [row.post_id, row.rotation_degrees]))
     const hiddenIds = new Set((hidden ?? []).map(row => row.post_id))
     const posts = rows
       .filter(p => p.mission_id !== TEST_MISSION_ID)
@@ -50,6 +54,7 @@ export async function GET() {
         participant: p.participants?.name ?? '参加者',
         mission: p.missions?.title ?? '',
         hidden: hiddenIds.has(p.id),
+        rotation: rotationByPost.get(p.id) ?? 0,
         hearts: 0,
       }))
     // Reuse the existing server-ranked Liked top 15; no expensive per-post reaction transfer.
@@ -74,8 +79,9 @@ export async function PATCH(request: Request) {
     if (!admin) return NextResponse.json({ error: '写真管理権限が必要です。' }, { status: 403, headers: NO_CACHE })
     const body = await request.json().catch(() => null)
     const postId = body?.postId
+    const isRotation = body !== null && Object.prototype.hasOwnProperty.call(body, 'rotation')
     if (typeof postId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(postId) ||
-        typeof body?.hidden !== 'boolean') {
+        (isRotation ? ![0, 90, 180, 270].includes(body.rotation) : typeof body?.hidden !== 'boolean')) {
       return NextResponse.json({ error: '投稿IDと表示設定を確認してください。' }, { status: 400, headers: NO_CACHE })
     }
     const eventId = getEventId()
@@ -86,6 +92,17 @@ export async function PATCH(request: Request) {
     if (checkError) throw checkError
     if (!post || post.mission_id === TEST_MISSION_ID) {
       return NextResponse.json({ error: 'この投稿は上映対象ではありません。' }, { status: 404, headers: NO_CACHE })
+    }
+    if (isRotation) {
+      const rotation = body.rotation as 0 | 90 | 180 | 270
+      const result = rotation === 0
+        ? await db.from('slideshow_rotation_overrides').delete().eq('event_id', eventId).eq('post_id', postId)
+        : await db.from('slideshow_rotation_overrides').upsert(
+            { event_id: eventId, post_id: postId, rotation_degrees: rotation, updated_by: admin.id, updated_at: new Date().toISOString() },
+            { onConflict: 'event_id,post_id' },
+          )
+      if (result.error) throw result.error
+      return NextResponse.json({ ok: true, postId, rotation }, { headers: NO_CACHE })
     }
     const result = body.hidden
       ? await db.from('slideshow_hidden_posts')
