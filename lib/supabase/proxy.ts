@@ -22,6 +22,19 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
+  // Admin pages and exports remain available after the event closes.
+  const path = request.nextUrl.pathname
+  if (!path.startsWith('/admin') && !path.startsWith('/api/admin/') && path !== '/closed') {
+    const { data: event, error } = await supabase.from('events').select('status')
+      .eq('id', process.env.NEXT_PUBLIC_EVENT_ID!).single()
+    if (!error && event?.status === 'archive') {
+      const stopped = path.startsWith('/api/')
+        ? NextResponse.json({ error: 'Outing 2026は終了しました。' }, { status: 410 })
+        : NextResponse.redirect(new URL('/closed', request.url))
+      response.cookies.getAll().forEach(cookie => stopped.cookies.set(cookie))
+      return stopped
+    }
+  }
   await supabase.auth.getClaims()
   return response
 }
