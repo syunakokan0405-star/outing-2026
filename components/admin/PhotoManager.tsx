@@ -2,6 +2,7 @@
 import PersistentPostImage from '@/components/PersistentPostImage'
 
 import Link from 'next/link'
+import PhotoExport from './PhotoExport'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -84,6 +85,7 @@ export default function PhotoManager({ eventId }: { eventId: string }) {
   return <main className="grid" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
     <Link className="backLink" href="/admin">← Dashboard</Link>
     <div><div className="brand">OUTING 2026 ADMIN</div><h1>写真管理</h1><p className="muted">参加者別に投稿を確認・取り消し・復元できます。</p></div>
+    <PhotoExport />
     <section className="card grid">
       <label>名前で検索<input className="input" value={query} disabled={busy} onChange={e => setQuery(e.target.value)} /></label>
       <label>参加者<select className="input" value={selectedId} disabled={busy} onChange={e => { setSelectedId(e.target.value); setOffset(0); setCancelTarget(null); setMessage('') }}>
